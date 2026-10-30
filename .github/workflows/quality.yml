@@ -1,0 +1,31 @@
+name: K3 Laravel source checks (offline)
+on:
+  pull_request:
+  push:
+    branches: [main, develop]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  syntax-and-manifests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, pdo_sqlite, xml, curl, openssl, fileinfo
+          tools: composer:v2
+      - name: PHP manifest validity
+        run: composer validate --no-check-publish
+      - name: Syntax checks without production database
+        run: |
+          find app config database routes tests -type f -name '*.php' -print0 | while IFS= read -r -d '' file; do php -l "$file" >/dev/null || exit 1; done
+      - name: Static chat push safety contract checks (no backend calls)
+        run: python3 tools/k3_chat_push_contract_test.py
+      - name: Protect against committed credentials and dumps
+        run: |
+          if git ls-files | grep -E '(^|/)(\.env$|oauth-private\.key$|key\.properties$|.*\.(jks|keystore|p8|pem|sqlite|db)$|doctro\.sql$|firebase-service-account\.json$|.*service-account.*\.json$)'; then
+            echo 'Restricted data or secrets included'; exit 1
+          fi
