@@ -25,6 +25,8 @@ jobs:
       - name: Syntax checks without production database
         run: |
           find app config database routes tests -type f -name '*.php' -print0 | while IFS= read -r -d '' file; do php -l "$file" >/dev/null || exit 1; done
+      - name: Isolated OTP verification regression cases
+        run: php tools/test_otp_verification.php
       - name: Isolated payment verification regression cases
         run: php tools/test_payment_verification.php
       - name: Static chat push safety contract checks (no backend calls)
