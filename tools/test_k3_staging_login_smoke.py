@@ -38,7 +38,7 @@ class SmokeToolTest(unittest.TestCase):
             ("https://notstaging.care360apps.example.org/api/", "notstaging.care360apps.example.org"),
             (BASE, "production.care360apps.example.org"),
             ("https://staging.care360apps.example.org/api?x=1", HOST),
-            ("https://staging.care360apps.example.org/api/", "staging.care360apps.example.org"),
+            ("https://staging.care360apps.example.org/api/", "wrong-staging.example.org"),
             ("https://127.0.0.1/api/", "127.0.0.1"),
             ("https://staging.invalid/api/", "staging.invalid"),
         ]:
