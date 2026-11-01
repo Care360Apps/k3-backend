@@ -33,6 +33,8 @@ jobs:
         run: php tools/test_payment_verification.php
       - name: Static chat push safety contract checks (no backend calls)
         run: python3 tools/k3_chat_push_contract_test.py
+      - name: Synthetic staging login safety tests (offline; no HTTP)
+        run: python3 tools/test_k3_staging_login_smoke.py
       - name: Protect against committed credentials and dumps
         run: |
           if git ls-files | grep -E '(^|/)(\.env$|oauth-private\.key$|key\.properties$|.*\.(jks|keystore|p8|pem|sqlite|db)$|doctro\.sql$|firebase-service-account\.json$|.*service-account.*\.json$)'; then
