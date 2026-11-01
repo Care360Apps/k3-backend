@@ -856,21 +856,15 @@ class DoctorApiController extends Controller
 
     public function apiUpdateImage(Request $request)
     {
-        $request->validate([
-            'image' => 'required',
-        ]);
-        $doctor = Doctor::where('user_id', auth()->user()->id)->first();
-        if (isset($request->image)) {
-            (new CustomController)->deleteFile($doctor->image);
-            $img = $request->image;
-            $img = str_replace('data:image/png;base64,', '', $img);
-            $img = str_replace(' ', '+', $img);
-            $data1 = base64_decode($img);
-            $Iname = CustomController::randomFileName('png');
-            file_put_contents(public_path('/images/upload/').$Iname, $data1);
-            $data['image'] = $Iname;
+        $request->validate(['image' => 'required']);
+        $doctor = Doctor::where('user_id', auth()->id())->firstOrFail();
+        $name = (new \App\Services\ProfileImageUpload)->store($request->file('image') ?? $request->input('image'), public_path('images/upload'));
+        $previousImage = $doctor->image;
+        $doctor->update(['image' => $name]);
+        // Only delete server-generated filenames after the replacement is saved.
+        if (preg_match('/^[a-f0-9]{32}\\.(png|jpg)$/', (string) $previousImage)) {
+            (new CustomController)->deleteFile($previousImage);
         }
-        $doctor->update($data);
 
         return response(['success' => true, 'data' => $doctor->fullImage]);
     }
