@@ -131,6 +131,7 @@ class PaymentGatewayService
         if (str_starts_with($token, 'pi_')) {
             $intent = $this->stripe()->paymentIntents->retrieve($token);
             $ok = $intent->status === 'succeeded'
+                && $this->sameCurrency($intent->currency ?? null)
                 && $intent->amount >= $this->toMinorUnits($amount)
                 && (string) ($intent->metadata['user_id'] ?? '') === (string) $userId;
             if (! $ok) {
@@ -181,7 +182,9 @@ class PaymentGatewayService
             ->throw()
             ->json();
         $paid = (float) data_get($payment, 'transactions.0.amount.total', 0);
-        if (($payment['state'] ?? null) !== 'approved' || $paid + 0.001 < $amount) {
+        if (($payment['state'] ?? null) !== 'approved'
+            || ! $this->sameCurrency(data_get($payment, 'transactions.0.amount.currency'))
+            || $paid + 0.001 < $amount) {
             $this->fail();
         }
 
@@ -242,7 +245,7 @@ class PaymentGatewayService
             ->get('https://api.razorpay.com/v1/payments/'.rawurlencode($paymentId))
             ->throw()
             ->json();
-        if (! in_array($data['status'] ?? null, ['authorized', 'captured'], true)
+        if (($data['status'] ?? null) !== 'captured'
             || ! $this->sameCurrency($data['currency'] ?? null)
             || (int) ($data['amount'] ?? 0) < $this->toMinorUnits($amount)) {
             $this->fail();
