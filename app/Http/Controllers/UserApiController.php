@@ -785,20 +785,10 @@ class UserApiController extends Controller
 
     public function apiUpdateImage(Request $request)
     {
-        $request->validate([
-            'image' => 'bail|required|mimes:jpeg,png,jpg|max:1000',
-
-        ]);
-        $id = auth()->user();
-        if (isset($request->image)) {
-            $img = $request->image;
-            $img = str_replace('data:image/png;base64,', '', $img);
-            $img = str_replace(' ', '+', $img);
-            $Iname = CustomController::randomFileName('png');
-            file_put_contents(public_path('/images/upload/').$Iname, base64_decode($img));
-            $data['image'] = $Iname;
-        }
-        $id->update($data);
+        $request->validate(['image' => 'required']);
+        $user = $request->user();
+        $name = (new \App\Services\ProfileImageUpload)->store($request->file('image') ?? $request->input('image'), public_path('images/upload'));
+        $user->update(['image' => $name]);
 
         return response(['success' => true, 'data' => 'image updated succssfully..!!']);
     }
