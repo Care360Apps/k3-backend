@@ -14,6 +14,12 @@ return [
     |
     */
 
+    // Default OFF: approval and isolated hosting required before Gemini calls.
+    'care360_ai' => [
+        'enabled' => env('K3_AI_GUIDE_ENABLED', false),
+        'key' => env('K3_AI_GEMINI_API_KEY'),
+    ],
+
     'mailgun' => [
         'domain' => env('MAILGUN_DOMAIN'),
         'secret' => env('MAILGUN_SECRET'),
