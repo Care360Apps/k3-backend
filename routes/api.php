@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\DoctorApiController;
+use App\Http\Controllers\Care360AiGuideController;
 use App\Http\Controllers\PaymentApiController;
 use App\Http\Controllers\ProviderApiController;
 use App\Http\Controllers\UserApiController;
@@ -21,6 +22,10 @@ use Illuminate\Support\Facades\Route;
 Route::middleware(['auth:api'])->get('/user', function (Request $request) {
     return $request->user();
 });
+
+// Opt-in, authenticated app-navigation help. No free-text medical prompts.
+Route::post('/ai/guide', [Care360AiGuideController::class, 'guide'])
+    ->middleware(['auth:api', 'throttle:5,1']);
 
 // Onesignal Notification Test, Only for Developers.
 // Route::get('/send-test-notification', [DoctorApiController::class, 'sendTestNotification']);
