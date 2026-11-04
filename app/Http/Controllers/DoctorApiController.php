@@ -6,6 +6,7 @@ use App\Http\Controllers\SuperAdmin\CustomController;
 use App\Models\Appointment;
 use App\Models\Category;
 use App\Models\Doctor;
+use App\Services\AgoraSessionPolicy;
 use App\Models\DoctorSubscription;
 use App\Models\Expertise;
 use App\Models\Hospital;
@@ -937,7 +938,7 @@ class DoctorApiController extends Controller
             $channelName = $cn;
             $uid = 0;
             $role = \RtcTokenBuilder::RolePublisher;
-            $expireTimeInSeconds = 180;
+            $expireTimeInSeconds = AgoraSessionPolicy::TOKEN_TTL_SECONDS;
             $currentTimestamp = (new DateTime('now', new DateTimeZone(env('timezone'))))->getTimestamp();
             $privilegeExpiredTs = $currentTimestamp + $expireTimeInSeconds;
             // Find the Patient User Model for Call Receiver
