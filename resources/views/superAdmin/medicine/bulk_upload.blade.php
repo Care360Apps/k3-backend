@@ -11,7 +11,7 @@
                 </div>
                 <div class="modal-body">
                     <p>
-                        {{ __('Upload a CSV file with one product per row. Products whose name already exists in this pharmacy are updated and their incoming stock is added to the available stock.') }}
+                        {{ __('Download the CSV template, enter one product per row, then preview and validate it before importing. Existing products are updated and incoming stock is added; duplicate names in the same file are rejected.') }}
                         <a href="{{ url('medicines/bulk_template') }}">{{ __('Download the CSV template') }}</a>
                     </p>
                     <div class="form-group">
@@ -42,7 +42,8 @@
                     <small class="text-muted">{{ __('Imported products use the default image; you can change it by editing the product.') }}</small>
                 </div>
                 <div class="modal-footer">
-                    <button type="submit" class="btn btn-primary">{{ __('Upload') }}</button>
+                    <button type="submit" name="import_action" value="preview" class="btn btn-outline-primary">{{ __('Preview & validate') }}</button>
+                    <button type="submit" name="import_action" value="import" class="btn btn-primary" onclick="return confirm('{{ __('Import validated medicines and add stock? This changes pharmacy inventory.') }}')">{{ __('Import medicines') }}</button>
                     <button type="button" class="btn btn-secondary" data-dismiss="modal">{{ __('Close') }}</button>
                 </div>
             </form>
