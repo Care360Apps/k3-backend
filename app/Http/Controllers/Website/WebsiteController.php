@@ -46,6 +46,7 @@ use App\Models\User;
 use App\Models\UserAddress;
 use App\Models\WorkingHour;
 use App\Services\MedicineOrderPricing;
+use App\Services\PharmacyCommission;
 use App\Services\PaymentGatewayService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -1355,8 +1356,10 @@ class WebsiteController extends Controller
         if ($request->hasFile('pdf')) {
             $data['pdf'] = (new CustomController)->safeUpload($request->file('pdf'), public_path().'/prescription/upload', ['pdf']);
         }
-        $data['admin_commission'] = $data['amount'] * $pharmacy->commission_amount / 100;
-        $data['pharmacy_commission'] = $data['amount'] - $data['admin_commission'];
+        // Web checkout must match API checkout exactly.
+        $split = PharmacyCommission::split((float) $order['items_total'], $pharmacy->commission_amount);
+        $data['admin_commission'] = $split['platform'];
+        $data['pharmacy_commission'] = $split['pharmacy'];
 
         DB::transaction(function () use ($data, $order) {
             $purchase = PurchaseMedicine::create($data);
