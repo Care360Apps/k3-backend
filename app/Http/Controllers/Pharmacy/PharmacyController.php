@@ -11,6 +11,7 @@ use App\Models\Language;
 use App\Models\Medicine;
 use App\Models\PayoutAccount;
 use App\Models\Pharmacy;
+use App\Services\PharmacyCommission;
 use App\Models\PharmacySettle;
 use App\Models\PharmacyWorkingHour;
 use App\Models\PurchaseMedicine;
@@ -131,7 +132,7 @@ class PharmacyController extends Controller
         $data['end_time'] = strtolower('08:00 pm');
         $data['image'] = 'defaultUser.png';
         $data['status'] = 1;
-        $data['commission_amount'] = $setting->pharmacy_commission;
+        $data['commission_amount'] = PharmacyCommission::rate($setting->pharmacy_commission ?? null);
         $pharmacy = Pharmacy::create($data);
         $start_time = strtolower($pharmacy->start_time);
         $end_time = strtolower($pharmacy->end_time);
