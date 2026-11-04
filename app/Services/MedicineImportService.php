@@ -55,7 +55,7 @@ class MedicineImportService
      *
      * @throws ValidationException listing every problem found, with row numbers
      */
-    public function import(UploadedFile $file, int $pharmacyId): array
+    public function import(UploadedFile $file, int $pharmacyId, bool $previewOnly = false): array
     {
         [$header, $rows] = $this->read($file);
 
@@ -129,6 +129,29 @@ class MedicineImportService
         }
         if ($errors) {
             $this->fail($errors);
+        }
+
+        if ($previewOnly) {
+            // Reuse the exact same validation as a real import, but do not
+            // create, update or restock any rows during preview.
+            $incomingNames = array_column($valid, 'name');
+            $existing = Medicine::where('pharmacy_id', $pharmacyId)
+                ->whereIn('name', $incomingNames)
+                ->pluck('name')
+                ->mapWithKeys(fn ($name) => [mb_strtolower(trim($name)) => true]);
+            $updated = 0;
+            foreach ($incomingNames as $name) {
+                if ($existing->has(mb_strtolower(trim($name)))) {
+                    $updated++;
+                }
+            }
+
+            return [
+                'created' => count($valid) - $updated,
+                'updated' => $updated,
+                'rows' => count($valid),
+                'incoming_stock' => array_sum(array_column($valid, 'incoming_stock')),
+            ];
         }
 
         return DB::transaction(function () use ($valid, $pharmacyId) {

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Mail\SendMail;
 use App\Models\Country;
 use App\Models\Pharmacy;
+use App\Services\PharmacyCommission;
 use App\Models\PharmacySettle;
 use App\Models\PharmacyWorkingHour;
 use App\Models\PurchaseMedicine;
@@ -64,7 +65,7 @@ class PharmacyController extends Controller
             'start_time' => 'bail|required',
             'end_time' => 'bail|required|after:start_time',
             'address' => 'bail|required',
-            'commission_amount' => 'bail|required',
+            'commission_amount' => 'bail|nullable|numeric|between:0,100',
             'image' => 'bail|mimes:jpeg,png,jpg|max:1000',
         ],
             [
@@ -116,6 +117,7 @@ class PharmacyController extends Controller
             array_push($delivery, $temp);
         }
         $data['delivery_charges'] = json_encode($delivery);
+        $data['commission_amount'] = PharmacyCommission::rate($data['commission_amount'] ?? null);
         $pharmacy = Pharmacy::create($data);
         $start_time = strtolower($pharmacy->start_time);
         $end_time = strtolower($pharmacy->end_time);
@@ -181,7 +183,7 @@ class PharmacyController extends Controller
             'start_time' => 'bail|required',
             'end_time' => 'bail|required|after:start_time',
             'address' => 'bail|required',
-            'commission_amount' => 'bail|required',
+            'commission_amount' => 'bail|nullable|numeric|between:0,100',
             'image' => 'bail|mimes:jpeg,png,jpg|max:1000',
         ],
             [
@@ -204,6 +206,9 @@ class PharmacyController extends Controller
         }
         $data['start_time'] = strtolower(Carbon::parse($data['start_time'])->format('h:i a'));
         $data['end_time'] = strtolower(Carbon::parse($data['end_time'])->format('h:i a'));
+        if (array_key_exists('commission_amount', $data)) {
+            $data['commission_amount'] = PharmacyCommission::rate($data['commission_amount']);
+        }
         $pharmacy->update($data);
 
         return redirect('pharmacy')->withStatus(__('Pharmacy updated successfully..!!'));
