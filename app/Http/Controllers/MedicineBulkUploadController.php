@@ -48,7 +48,13 @@ class MedicineBulkUploadController extends Controller
             ['file' => 'bail|required|file|max:2048|extensions:csv,txt|mimes:csv,txt'],
             ['file.extensions' => __('Please upload a .csv file (in Excel use "Save As > CSV").'), 'file.mimes' => __('Please upload a .csv file (in Excel use "Save As > CSV").')]
         );
-        $result = $importer->import($request->file('file'), $pharmacyId);
+        $previewOnly = $request->input('import_action') === 'preview';
+        $result = $importer->import($request->file('file'), $pharmacyId, $previewOnly);
+        if ($previewOnly) {
+            return redirect()->back()->withStatus(
+                __('Preview only — :rows valid product(s): :created new, :updated existing; :incoming_stock units incoming. No products or stock changed. Select the file again and choose Import to confirm.', $result)
+            );
+        }
 
         return redirect()->back()->withStatus(__('Bulk upload complete: :created new product(s) added, :updated existing product(s) updated.', $result));
     }
