@@ -39,6 +39,8 @@ jobs:
         run: php -d zend.assertions=1 -d assert.exception=1 tools/test_consultation_capabilities.php
       - name: Pharmacy commission and preview safety (offline)
         run: php tools/test_pharmacy_commission.php
+      - name: Clinical encounter notes confidentiality contract (offline)
+        run: php tools/test_doctor_notes_contract.php
       - name: Protect against committed credentials and dumps
         run: |
           if git ls-files | grep -E '(^|/)(\.env$|oauth-private\.key$|key\.properties$|.*\.(jks|keystore|p8|pem|sqlite|db)$|doctro\.sql$|firebase-service-account\.json$|.*service-account.*\.json$)'; then

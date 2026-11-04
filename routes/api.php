@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\DoctorApiController;
+use App\Http\Controllers\DoctorNoteController;
 use App\Http\Controllers\PaymentApiController;
 use App\Http\Controllers\ProviderApiController;
 use App\Http\Controllers\UserApiController;
@@ -108,6 +109,10 @@ Route::get('allMedicines', [DoctorApiController::class, 'apiMedicines']);
 
 Route::middleware('auth:api')->group(function () {
     Route::get('doctor_appointment', [DoctorApiController::class, 'apiDoctorAppointment']);
+    Route::get('doctor_notes', [DoctorNoteController::class, 'index']);
+    Route::post('doctor_notes', [DoctorNoteController::class, 'store']);
+    Route::put('doctor_notes/{id}', [DoctorNoteController::class, 'update']);
+    Route::delete('doctor_notes/{id}', [DoctorNoteController::class, 'destroy']);
     Route::post('add_prescription', [DoctorApiController::class, 'apiAddPrescription']);
     Route::get('working_hours', [DoctorApiController::class, 'apiWorkingHours']);
     Route::post('update_time', [DoctorApiController::class, 'apiUpdateWorkingHours']);
