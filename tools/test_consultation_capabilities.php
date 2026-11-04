@@ -45,8 +45,14 @@ namespace {
     $user = file_get_contents($files['UserApiController.php']);
     $professional = file_get_contents($files['DoctorApiController.php']);
     assert(str_contains($user, 'ConsultationCapabilities::canBook($doctor, $visitType)'));
-    assert(str_contains($user, "hasOpenBooking(auth()->id(), $doctor->id, 'video_call')"));
-    assert(str_contains($professional, "hasOpenBooking((int) $request->to_id, $doctor->id, 'video_call')"));
+    assert(str_contains($user, <<<'PHP'
+hasOpenBooking(auth()->id(), $doctor->id, 'video_call')
+PHP
+    ));
+    assert(str_contains($professional, <<<'PHP'
+hasOpenBooking((int) $request->to_id, $doctor->id, 'video_call')
+PHP
+    ));
     assert(str_contains($professional, "Prescription access requires an approved doctor account."));
     assert(! str_contains($user, 'info($data);'));
 
