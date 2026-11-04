@@ -8,6 +8,7 @@ use App\Http\Controllers\SuperAdmin\CustomController;
 use App\Mail\SendMail;
 use App\Services\FirebaseTokenService;
 use App\Services\MedicineOrderPricing;
+use App\Services\PharmacyCommission;
 use App\Services\OtpService;
 use App\Services\PaymentGatewayService;
 use App\Models\Appointment;
@@ -1010,8 +1011,10 @@ class UserApiController extends Controller
         if ($request->hasFile('pdf')) {
             $data['pdf'] = (new CustomController)->safeUpload($request->file('pdf'), public_path().'/prescription/upload', ['pdf']);
         }
-        $data['admin_commission'] = $data['amount'] * $pharmacy->commission_amount / 100;
-        $data['pharmacy_commission'] = $data['amount'] - $data['admin_commission'];
+        // Split only medicines; delivery is separately priced and excluded.
+        $split = PharmacyCommission::split((float) $order['items_total'], $pharmacy->commission_amount);
+        $data['admin_commission'] = $split['platform'];
+        $data['pharmacy_commission'] = $split['pharmacy'];
 
         DB::transaction(function () use ($data, $order) {
             $purchase = PurchaseMedicine::create($data);
