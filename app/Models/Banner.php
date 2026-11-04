@@ -11,7 +11,13 @@ class Banner extends Model
 
     protected $table = 'banner';
 
-    protected $fillable = ['image', 'link', 'status', 'name', 'description'];
+    protected $fillable = ['image', 'link', 'status', 'name', 'description', 'is_sponsored', 'starts_at', 'ends_at'];
+
+    protected $casts = [
+        'is_sponsored' => 'boolean',
+        'starts_at' => 'datetime',
+        'ends_at' => 'datetime',
+    ];
 
     protected $appends = ['fullImage'];
 

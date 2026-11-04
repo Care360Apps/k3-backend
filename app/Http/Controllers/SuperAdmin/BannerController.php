@@ -4,6 +4,7 @@ namespace App\Http\Controllers\SuperAdmin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Banner;
+use App\Services\SafePartnerLink;
 use Gate;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -31,9 +32,7 @@ class BannerController extends Controller
     public function create()
     {
         abort_if(Gate::denies('banner_add'), Response::HTTP_FORBIDDEN, '403 Forbidden');
-        if (count(Banner::orderBy('id', 'DESC')->get()) < 3) {
-            return view('superAdmin.banner.create_banner');
-        }
+        return view('superAdmin.banner.create_banner');
     }
 
     /**
@@ -41,25 +40,34 @@ class BannerController extends Controller
      *
      * @return \Illuminate\Http\Response
      */
+    private function validateCampaign(Request $request, bool $requiredImage): array
+    {
+        return $request->validate([
+            'name' => ['required', 'string', 'max:90'],
+            'description' => ['nullable', 'string', 'max:255'],
+            'link' => ['required', 'string', 'max:2048', function ($attribute, $value, $fail) {
+                if (! SafePartnerLink::isValidHttps($value)) {
+                    $fail('Enter a valid public HTTPS website without account credentials.');
+                }
+            }],
+            'image' => [$requiredImage ? 'required' : 'nullable', 'image', 'mimes:jpeg,png,jpg', 'max:1024'],
+            'is_sponsored' => ['sometimes', 'boolean'],
+            'starts_at' => ['nullable', 'date'],
+            'ends_at' => ['nullable', 'date', 'after_or_equal:starts_at'],
+        ]);
+    }
+
+    /** Create an approved promotional placement; no three-banner limit. */
     public function store(Request $request)
     {
-        $request->validate([
-            'link' => 'bail|required',
-            'image' => 'bail|mimes:jpeg,png,jpg|max:1000',
-        ],
-            [
-                'image.max' => 'The Image May Not Be Greater Than 1 MegaBytes.',
-            ]);
-        $data = $request->all();
-        if ($request->hasFile('image')) {
-            $data['image'] = (new CustomController)->imageUpload($request->image);
-        } else {
-            $data['image'] = 'prod_default.png';
-        }
+        abort_if(Gate::denies('banner_add'), Response::HTTP_FORBIDDEN, '403 Forbidden');
+        $data = $this->validateCampaign($request, true);
+        $data['image'] = (new CustomController)->imageUpload($request->file('image'));
         $data['status'] = $request->has('status') ? 1 : 0;
+        $data['is_sponsored'] = $request->boolean('is_sponsored');
         Banner::create($data);
 
-        return redirect('banner')->withStatus(__('banner created successfully..!'));
+        return redirect('banner')->withStatus(__('Banner created successfully.'));
     }
 
     /**
@@ -96,21 +104,18 @@ class BannerController extends Controller
      */
     public function update(Request $request, $id)
     {
-        $request->validate([
-            'link' => 'bail|required',
-            'image' => 'bail|mimes:jpeg,png,jpg|max:1000',
-        ],
-            [
-                'image.max' => 'The Image May Not Be Greater Than 1 MegaBytes.',
-            ]);
-        $data = $request->all();
+        abort_if(Gate::denies('banner_edit'), Response::HTTP_FORBIDDEN, '403 Forbidden');
+        $data = $this->validateCampaign($request, false);
         if ($request->hasFile('image')) {
-            $data['image'] = (new CustomController)->imageUpload($request->image);
+            $data['image'] = (new CustomController)->imageUpload($request->file('image'));
+        } else {
+            unset($data['image']);
         }
-        $id = Banner::find($id);
-        $id->update($data);
+        $data['is_sponsored'] = $request->boolean('is_sponsored');
+        $data['status'] = $request->has('status') ? 1 : 0;
+        Banner::findOrFail($id)->update($data);
 
-        return redirect('banner')->withStatus(__('banner updated successfully..!'));
+        return redirect('banner')->withStatus(__('Banner updated successfully.'));
     }
 
     /**
@@ -121,7 +126,8 @@ class BannerController extends Controller
      */
     public function destroy($id)
     {
-        $banner = Banner::find($id);
+        abort_if(Gate::denies('banner_delete'), Response::HTTP_FORBIDDEN, '403 Forbidden');
+        $banner = Banner::findOrFail($id);
         (new CustomController)->deleteFile($banner->image);
         $banner->delete();
 

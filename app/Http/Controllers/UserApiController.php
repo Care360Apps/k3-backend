@@ -1289,9 +1289,25 @@ class UserApiController extends Controller
 
     public function apiBanner()
     {
-        $data = Banner::get();
+        // Public curated placements only; never attach patient, booking or
+        // consultation information. Scheduled campaigns expire automatically.
+        $now = now();
+        $data = Banner::where('status', 1)
+            ->where(function ($query) use ($now) {
+                $query->whereNull('starts_at')->orWhere('starts_at', '<=', $now);
+            })
+            ->where(function ($query) use ($now) {
+                $query->whereNull('ends_at')->orWhereDate('ends_at', '>=', $now->toDateString());
+            })
+            ->orderByDesc('id')
+            ->limit(50)
+            ->get()
+            ->filter(fn ($banner) => \App\Services\SafePartnerLink::isValidHttps($banner->link))
+            ->take(30)
+            ->values();
 
-        return response(['success' => true, 'data' => $data]);
+        return response(['success' => true, 'data' => $data])
+            ->header('Cache-Control', 'public, max-age=60');
     }
 
     public function apiFaviroute()

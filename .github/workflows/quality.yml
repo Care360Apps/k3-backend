@@ -45,6 +45,8 @@ jobs:
         run: php tools/test_agora_session_policy.php
       - name: Pharmacy atomic stock capacity safety (offline)
         run: php tools/test_pharmacy_stock_guard.php
+      - name: Partner campaign privacy and HTTPS safety contract (offline)
+        run: php tools/test_partner_campaign_contract.php
       - name: Protect against committed credentials and dumps
         run: |
           if git ls-files | grep -E '(^|/)(\.env$|oauth-private\.key$|key\.properties$|.*\.(jks|keystore|p8|pem|sqlite|db)$|doctro\.sql$|firebase-service-account\.json$|.*service-account.*\.json$)'; then
