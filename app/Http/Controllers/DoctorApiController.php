@@ -443,6 +443,17 @@ class DoctorApiController extends Controller
             'hourly_rate' => 'nullable|numeric|min:0',
         ]);
         $data = $request->only(Doctor::SELF_EDITABLE);
+        if ($isProvider) {
+            // Providers do not need a physician's treatment, expertise or
+            // hospital affiliation. Omit nulls instead of writing NULL into
+            // legacy non-nullable doctor-table columns.
+            foreach (['treatment_id', 'category_id', 'expertise_id', 'hospital_id']
+                as $physicianField) {
+                if (! isset($data[$physicianField]) || $data[$physicianField] === '') {
+                    unset($data[$physicianField]);
+                }
+            }
+        }
         $data['is_filled'] = 1;
         if (isset($data['hourly_rate']) && $data['hourly_rate'] !== '') {
             $data['hourly_rate'] = (float) $data['hourly_rate'];
