@@ -339,6 +339,13 @@ class DoctorApiController extends Controller
 
     public function apiAddPrescription(Request $request)
     {
+        $prescriber = Doctor::where('user_id', auth()->id())->first();
+        if (! $prescriber || $prescriber->user_role === 'provider'
+            || ! auth()->user()->hasRole('doctor')
+            || (int) $prescriber->is_approved !== 1) {
+            return response()->json(['success' => false,
+                'msg' => 'Prescription access requires an approved doctor account.'], 403);
+        }
         $request->validate([
             'appointment_id' => 'bail|required',
             'medicines' => 'bail|required',
@@ -410,18 +417,19 @@ class DoctorApiController extends Controller
 
     public function apiUpdateDoctor(Request $request)
     {
-        $id = Doctor::where('user_id', auth()->user()->id)->first();
+        $id = Doctor::where('user_id', auth()->user()->id)->firstOrFail();
+        $isProvider = $id->user_role === 'provider';
         $request->validate([
             'name' => 'bail|required',
-            'treatment_id' => 'bail|required',
-            'category_id' => 'bail|required',
+            'treatment_id' => $isProvider ? 'nullable' : 'bail|required',
+            'category_id' => $isProvider ? 'nullable' : 'bail|required',
             'dob' => 'bail|required|date_format:Y-m-d',
             'gender' => 'bail|required',
-            'expertise_id' => 'bail|required',
+            'expertise_id' => $isProvider ? 'nullable' : 'bail|required',
             'timeslot' => 'bail|required',
             'start_time' => 'bail|required',
             'end_time' => 'bail|required|after:start_time',
-            'hospital_id' => 'bail|required',
+            'hospital_id' => $isProvider ? 'nullable' : 'bail|required',
             'desc' => 'required',
             'appointment_fees' => 'required|numeric',
             'experience' => 'bail|required|numeric',
@@ -444,9 +452,10 @@ class DoctorApiController extends Controller
         if (isset($data['offers_video_call'])) {
             $data['offers_video_call'] = (int) $data['offers_video_call'];
         }
-        if (isset($data['offers_home_visit'])) {
-            $data['offers_home_visit'] = (int) $data['offers_home_visit'];
-        }
+        // Only providers may offer a home visit; role cannot be overridden by the client.
+        $data['offers_home_visit'] = $isProvider
+            ? (int) ($data['offers_home_visit'] ?? $id->offers_home_visit ?? 1)
+            : 0;
         if (isset($data['lat']) && ($data['lat'] === '' || $data['lat'] === null)) {
             $data['lat'] = null;
         }
@@ -906,8 +915,8 @@ class DoctorApiController extends Controller
             'to_id' => 'bail|required|integer',
         ]);
         $doctor = Doctor::where('user_id', auth()->id())->firstOrFail();
-        if (! Appointment::hasOpenBooking((int) $request->to_id, $doctor->id)) {
-            return response()->json(['success' => false, 'msg' => 'You can only call a patient with an upcoming appointment.'], 403);
+        if (! Appointment::hasOpenBooking((int) $request->to_id, $doctor->id, 'video_call')) {
+            return response()->json(['success' => false, 'msg' => 'You can only call a patient with a booked virtual consultation.'], 403);
         }
         $cn = 'c'.bin2hex(random_bytes(12));
         $settings = Setting::select('agora_app_id', 'agora_app_certificate')->first();
