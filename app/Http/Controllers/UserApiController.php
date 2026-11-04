@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\AccountErasureService;
+use App\Services\ConsultationCapabilities;
 use App\Http\Controllers\PasswordResetController;
 use App\Http\Controllers\SuperAdmin\CustomController;
 use App\Mail\SendMail;
@@ -313,7 +314,7 @@ class UserApiController extends Controller
             $query->where('provider_type_id', $request->provider_type_id);
         }
 
-        $providers = $query->get(['id', 'name', 'image', 'address', 'lat', 'lng', 'provider_type_id', 'appointment_fees', 'hourly_rate', 'rate', 'review']);
+        $providers = $query->get(['id', 'name', 'image', 'address', 'lat', 'lng', 'provider_type_id', 'appointment_fees', 'hourly_rate', 'rate', 'review', 'offers_video_call', 'offers_home_visit']);
 
         if ($request->filled('lat') && $request->filled('lang')) {
             $providers = $this->getNearProvider($providers, $request->lat, $request->lang);
@@ -345,6 +346,9 @@ class UserApiController extends Controller
         }
 
         $provider = $provider->makeHidden(['created_at', 'updated_at', 'timeslot', 'dob', 'gender', 'since', 'status', 'based_on', 'hospital_id', 'treatment_id', 'category_id', 'expertise_id']);
+        $allowedVisits = ConsultationCapabilities::allowedVisitTypes($provider);
+        $provider['offers_video_call'] = in_array('video_call', $allowedVisits, true) ? 1 : 0;
+        $provider['offers_home_visit'] = in_array('home_visit', $allowedVisits, true) ? 1 : 0;
         $provider['reviews'] = Review::with('user:id,name,image')->where('doctor_id', $id)->get();
 
         if ($request->filled('lat') && $request->filled('lang') && $provider->lat != null && $provider->lng != null) {
@@ -442,6 +446,9 @@ class UserApiController extends Controller
                 $doctor->hospital_id = [];
             }
         }
+        $allowedVisits = ConsultationCapabilities::allowedVisitTypes($doctor);
+        $doctor['offers_video_call'] = in_array('video_call', $allowedVisits, true) ? 1 : 0;
+        $doctor['offers_home_visit'] = in_array('home_visit', $allowedVisits, true) ? 1 : 0;
         $doctor['reviews'] = Review::with('user:id,name,image')->where('doctor_id', $id)->get();
 
         return response(['success' => true, 'data' => $doctor, 'msg' => 'single doctor details']);
@@ -495,6 +502,16 @@ class UserApiController extends Controller
         ]);
         $data = $request->except(['appointment_status', 'admin_commission', 'doctor_commission', 'cancel_by', 'cancel_reason', 'discount_id', 'discount_price', 'is_from', 'scheduled_notification_id_doctor', 'scheduled_notification_id_patient']);
         $doctor = Doctor::findOrFail($data['doctor_id']);
+        if ((int) $doctor->status !== 1) {
+            return response()->json(['success' => false, 'msg' => 'This professional is unavailable.'], 422);
+        }
+        $visitType = $data['visit_type'] ??
+            ($doctor->user_role === 'provider' ? 'home_visit' : 'video_call');
+        if (! ConsultationCapabilities::canBook($doctor, $visitType)) {
+            return response()->json(['success' => false,
+                'msg' => 'This consultation type is not offered by this professional.'], 422);
+        }
+        $data['visit_type'] = $visitType;
         $date = $data['date'];
         $time = $data['time'];
 
@@ -543,9 +560,6 @@ class UserApiController extends Controller
         $data['user_id'] = auth()->user()->id;
         $data['appointment_status'] = 'pending';
         $data['is_from'] = '0';
-        if (empty($data['visit_type']) || ! in_array($data['visit_type'], ['video_call', 'home_visit'])) {
-            $data['visit_type'] = 'video_call';
-        }
         if (isset($data['report_image'])) {
             $report = [];
             for ($i = 0; $i < count($data['report_image']); $i++) {
@@ -1306,8 +1320,8 @@ class UserApiController extends Controller
             'to_id' => 'bail|required|integer',
         ]);
         $doctor = Doctor::findOrFail($request->to_id);
-        if (! Appointment::hasOpenBooking(auth()->id(), $doctor->id)) {
-            return response()->json(['success' => false, 'msg' => 'You can only call a doctor you have an upcoming appointment with.'], 403);
+        if (! Appointment::hasOpenBooking(auth()->id(), $doctor->id, 'video_call')) {
+            return response()->json(['success' => false, 'msg' => 'You can only start a virtual call for a booked video consultation.'], 403);
         }
         $cn = 'c'.bin2hex(random_bytes(12));
         $settings = Setting::select('agora_app_id', 'agora_app_certificate')->first();
@@ -1346,8 +1360,7 @@ class UserApiController extends Controller
                 'appId' => $appId,
                 'agoraToken' => $agoraToken,
             ];
-            info($data);
-
+            // Do not write Agora tokens, channel identifiers or patient data to logs.
             OneSignal::sendNotificationToUser(
                 $sub,
                 $userid,

@@ -130,7 +130,7 @@ class ProviderApiController extends Controller
                 $userProvider['user_role'] = 'provider';
 
                 $firebase = new FirebaseTokenService();
-                $userProvider['firebase_custom_token'] = $firebase->providerToken($doctor->id);
+                $userProvider['firebase_custom_token'] = $firebase->providerToken($user->id);
 
                 return response(['success' => true, 'data' => $userProvider, 'msg' => 'Register Successfully']);
             }

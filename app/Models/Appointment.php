@@ -14,11 +14,14 @@ class Appointment extends Model
     protected $fillable = ['user_id', 'appointment_id', 'hospital_id', 'doctor_id', 'cancel_by', 'cancel_reason', 'payment_status', 'amount', 'payment_type', 'appointment_for', 'visit_type', 'patient_name', 'age', 'report_image', 'drug_effect', 'patient_address', 'phone_no', 'date', 'time', 'end_time', 'duration_minutes', 'payment_token', 'appointment_status', 'illness_information', 'note', 'doctor_commission', 'admin_commission', 'discount_id', 'discount_price', 'is_from', 'is_insured', 'policy_insurer_name', 'policy_number', 'scheduled_notification_id_doctor', 'scheduled_notification_id_patient'];
 
     /** Whether the patient and doctor have a pending/approved booking that is not in the past (video calls need one). */
-    public static function hasOpenBooking(int $patientUserId, int $doctorId): bool
+    public static function hasOpenBooking(int $patientUserId, int $doctorId, ?string $visitType = null): bool
     {
         return static::where('user_id', $patientUserId)
             ->where('doctor_id', $doctorId)
             ->whereIn('appointment_status', ['pending', 'approve'])
+            ->when($visitType !== null, function ($query) use ($visitType) {
+                $query->where('visit_type', $visitType);
+            })
             ->where('date', '>=', now(env('timezone'))->subDay()->toDateString())
             ->exists();
     }
