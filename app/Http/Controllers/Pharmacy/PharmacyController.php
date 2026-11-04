@@ -69,10 +69,18 @@ class PharmacyController extends Controller
         $pharmacy = Pharmacy::where('user_id', auth()->user()->id)->first();
         $today_sells = PharmacySettle::where('pharmacy_id', $pharmacy->id)->whereDate('created_at', Carbon::now(env('timezone')))->sum('pharmacy_amount');
         $total_medicines = Medicine::where('pharmacy_id', $pharmacy->id)->count();
+        $lowStock = Medicine::where('pharmacy_id', $pharmacy->id)
+            ->whereRaw('(total_stock - use_stock) BETWEEN 1 AND 10')->count();
+        $outOfStock = Medicine::where('pharmacy_id', $pharmacy->id)
+            ->whereRaw('(total_stock - use_stock) <= 0')->count();
+        $commissionRate = PharmacyCommission::rate($pharmacy->commission_amount);
         $currency = Setting::first()->currency_symbol;
         $revenueCharts = $this->revenueChart();
 
-        return view('pharmacyAdmin.home', compact('today_sells', 'total_medicines', 'currency', 'revenueCharts'));
+        return view('pharmacyAdmin.home', compact(
+            'today_sells', 'total_medicines', 'lowStock', 'outOfStock',
+            'commissionRate', 'currency', 'revenueCharts'
+        ));
     }
 
     public function revenueChart()
