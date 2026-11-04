@@ -10,6 +10,7 @@ use App\Http\Controllers\SuperAdmin\CustomController;
 use App\Mail\SendMail;
 use App\Services\FirebaseTokenService;
 use App\Services\MedicineOrderPricing;
+use App\Services\MedicineStockGuard;
 use App\Services\PharmacyCommission;
 use App\Services\OtpService;
 use App\Services\PaymentGatewayService;
@@ -1040,7 +1041,7 @@ class UserApiController extends Controller
                     'price' => $line['price'],
                     'qty' => $line['qty'],
                 ]);
-                $line['medicine']->increment('use_stock', $line['qty']);
+                MedicineStockGuard::consume((int) $line['medicine']->id, (int) $purchase->pharmacy_id, (int) $line['qty']);
             }
             PharmacySettle::create([
                 'purchase_medicine_id' => $purchase->id,

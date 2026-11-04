@@ -46,6 +46,7 @@ use App\Models\User;
 use App\Models\UserAddress;
 use App\Models\WorkingHour;
 use App\Services\MedicineOrderPricing;
+use App\Services\MedicineStockGuard;
 use App\Services\PharmacyCommission;
 use App\Services\PaymentGatewayService;
 use Carbon\Carbon;
@@ -1370,7 +1371,7 @@ class WebsiteController extends Controller
                     'price' => $line['price'],
                     'qty' => $line['qty'],
                 ]);
-                $line['medicine']->increment('use_stock', $line['qty']);
+                MedicineStockGuard::consume((int) $line['medicine']->id, (int) $purchase->pharmacy_id, (int) $line['qty']);
             }
             PharmacySettle::create([
                 'purchase_medicine_id' => $purchase->id,
