@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Services\AccountErasureService;
 use App\Services\ConsultationCapabilities;
+use App\Services\AgoraSessionPolicy;
 use App\Http\Controllers\PasswordResetController;
 use App\Http\Controllers\SuperAdmin\CustomController;
 use App\Mail\SendMail;
@@ -1334,7 +1335,7 @@ class UserApiController extends Controller
             $channelName = $cn;
             $uid = 0;
             $role = \RtcTokenBuilder::RolePublisher;
-            $expireTimeInSeconds = 180;
+            $expireTimeInSeconds = AgoraSessionPolicy::TOKEN_TTL_SECONDS;
             $currentTimestamp = (new DateTime('now', new DateTimeZone(env('timezone'))))->getTimestamp();
             $privilegeExpiredTs = $currentTimestamp + $expireTimeInSeconds;
 
