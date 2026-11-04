@@ -18,7 +18,8 @@ final class SafePartnerLink
         }
         $host = strtolower((string) $parts['host']);
         if ($host === 'localhost' || str_ends_with($host, '.localhost')
-            || str_ends_with($host, '.local') ||
+            || str_ends_with($host, '.local') || str_ends_with($host, '.internal') ||
+            str_ends_with($host, '.invalid') || str_ends_with($host, '.test') ||
             filter_var($host, FILTER_VALIDATE_IP) !== false) {
             return false;
         }
