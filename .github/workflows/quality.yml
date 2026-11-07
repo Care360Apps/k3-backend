@@ -35,6 +35,8 @@ jobs:
         run: php tools/test_provider_discovery_contract.php
       - name: Opt-in Nearby Care shift and location privacy safety
         run: php tools/test_nearby_care_presence_contract.php
+      - name: Synthetic Nearby Care staging smoke test self-check (no network)
+        run: python3 tools/staging_nearby_care_smoke.py --offline-self-test
       - name: PHP syntax of presence and migration
         run: |
           php -l app/Http/Controllers/NearbyCareController.php
