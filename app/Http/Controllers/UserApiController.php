@@ -1459,6 +1459,11 @@ class UserApiController extends Controller
     public function deleteAccount()
     {
         $user = auth()->user();
+        // This endpoint is for Patient accounts only; it must not erase
+        // Doctor, Provider or administrative identities.
+        if (! $user || $user->roles()->exists()) {
+            return response()->json(['success' => false, 'message' => 'Patient access required'], 403);
+        }
         if (Appointment::hasUpcomingForPatient($user->id)) {
             return response()->json(['success' => false, 'message' => 'You have upcoming appointments that need to be canceled first!']);
         }
