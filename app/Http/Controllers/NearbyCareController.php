@@ -226,7 +226,7 @@ final class NearbyCareController extends Controller
         if (($input['visit_type'] ?? null) === 'home_visit') {
             $query->where('d.user_role', 'provider')
                 ->where('d.offers_home_visit', 1)
-                ->havingRaw('distance_km <= p.service_radius_km');
+                ->havingRaw('distance_km <= service_radius_km');
         } elseif (($input['visit_type'] ?? null) === 'video_call') {
             $query->where('d.offers_video_call', 1);
         }
