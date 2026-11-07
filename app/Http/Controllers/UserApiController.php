@@ -301,8 +301,8 @@ class UserApiController extends Controller
     public function apiProviders(Request $request)
     {
         $request->validate([
-            'lat' => 'bail|nullable|numeric',
-            'lang' => 'bail|nullable|numeric',
+            'lat' => 'bail|nullable|numeric|between:-90,90',
+            'lang' => 'bail|nullable|numeric|between:-180,180',
             'limit' => 'bail|nullable|integer|min:1|max:50',
             'provider_type_id' => 'bail|nullable|exists:provider_types,id',
         ]);
@@ -310,6 +310,7 @@ class UserApiController extends Controller
         $query = Doctor::with('providerType:id,name,icon')
             ->where('user_role', 'provider')
             ->whereStatus(1)
+            ->where('is_approved', 1)
             ->where('is_filled', 1)
             ->whereSubscriptionStatus(1);
 
@@ -339,12 +340,15 @@ class UserApiController extends Controller
     public function apiSingleProvider(Request $request, $id)
     {
         $request->validate([
-            'lat' => 'bail|nullable|numeric',
-            'lang' => 'bail|nullable|numeric',
+            'lat' => 'bail|nullable|numeric|between:-90,90',
+            'lang' => 'bail|nullable|numeric|between:-180,180',
         ]);
 
         $provider = Doctor::with(['providerType:id,name,description,icon'])->where('user_role', 'provider')->find($id);
-        if (! $provider) {
+        if (! $provider || (int) $provider->status !== 1 ||
+            (int) $provider->is_approved !== 1 ||
+            (int) $provider->is_filled !== 1 ||
+            (int) $provider->subscription_status !== 1) {
             return response(['success' => false, 'msg' => 'Provider not found'], 404);
         }
 
@@ -370,11 +374,24 @@ class UserApiController extends Controller
     {
         $withDistance = [];
         foreach ($providers as $p) {
-            $dist = $this->distance((float) ($p->lat ?? 0), (float) ($p->lng ?? 0), (float) $lat, (float) $lang);
-            $p->distance_km = number_format($dist, 2);
+            $pointLat = is_numeric($p->lat) ? (float) $p->lat : null;
+            $pointLng = is_numeric($p->lng) ? (float) $p->lng : null;
+            // An unconfigured location must never be interpreted as 0,0.
+            if ($pointLat === null || $pointLng === null ||
+                ($pointLat == 0.0 && $pointLng == 0.0) ||
+                abs($pointLat) > 90 || abs($pointLng) > 180) {
+                $p->distance_km = null;
+            } else {
+                $p->distance_km = number_format(
+                    $this->distance($pointLat, $pointLng, (float) $lat, (float) $lang),
+                    2
+                );
+            }
             $withDistance[] = $p;
         }
-        usort($withDistance, fn ($a, $b) => (float) $a->distance_km <=> (float) $b->distance_km);
+        usort($withDistance, fn ($a, $b) =>
+            ($a->distance_km === null ? INF : (float) $a->distance_km) <=>
+            ($b->distance_km === null ? INF : (float) $b->distance_km));
 
         return collect($withDistance);
     }
