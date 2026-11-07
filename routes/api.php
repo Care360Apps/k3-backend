@@ -5,6 +5,9 @@ use App\Http\Controllers\DoctorNoteController;
 use App\Http\Controllers\PaymentApiController;
 use App\Http\Controllers\PatientPlaceSearchController;
 use App\Http\Controllers\Care360AiGuideController;
+use App\Http\Controllers\WorkforcePilotController;
+use App\Http\Middleware\WorkforcePilotEnabled;
+use App\Http\Middleware\AuthenticateWorkforce;
 use App\Http\Controllers\PatientMedicalFileController;
 use App\Http\Controllers\ProviderApiController;
 use App\Http\Controllers\NearbyCareController;
@@ -30,6 +33,28 @@ Route::middleware(['auth:api'])->get('/user', function (Request $request) {
 // Isolated nonclinical AI navigation (default OFF) and rate-limited.
 Route::post('/ai/guide', [Care360AiGuideController::class, 'guide'])
     ->middleware(['auth:api', 'throttle:5,1']);
+
+// A separate recruitment authorization boundary. These tokens NEVER use
+// Passport's clinical auth:api guard and cannot access appointments/records.
+// Entire feature defaults OFF until security and credential reviews complete.
+Route::get('/workforce/v1/status', [WorkforcePilotController::class, 'status'])
+    ->middleware('throttle:15,1');
+Route::prefix('workforce/v1')->middleware([WorkforcePilotEnabled::class])->group(function () {
+    Route::post('register', [WorkforcePilotController::class, 'register'])
+        ->middleware('throttle:5,1');
+    Route::post('login', [WorkforcePilotController::class, 'login'])
+        ->middleware('throttle:5,1');
+    Route::middleware([AuthenticateWorkforce::class])->group(function () {
+        Route::get('me', [WorkforcePilotController::class, 'me']);
+        Route::post('candidate/profile', [WorkforcePilotController::class, 'candidateProfile'])
+            ->middleware('throttle:20,1');
+        Route::post('employer/profile', [WorkforcePilotController::class, 'employerProfile'])
+            ->middleware('throttle:20,1');
+        Route::get('candidates', [WorkforcePilotController::class, 'candidates'])
+            ->middleware('throttle:20,1');
+        Route::post('logout', [WorkforcePilotController::class, 'logout']);
+    });
+});
 
 // Onesignal Notification Test, Only for Developers.
 // Route::get('/send-test-notification', [DoctorApiController::class, 'sendTestNotification']);
