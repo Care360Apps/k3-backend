@@ -41,4 +41,10 @@ return [
     'razorpay' => [
         'secret' => env('RAZORPAY_KEY_SECRET'),
     ],
+
+    'google_places' => [
+        // Dedicated server-only key, restricted to Places API (New) and the
+        // backend's outbound IP. Never include it in /api/setting or Flutter.
+        'key' => env('K3_PLACES_SERVER_API_KEY', ''),
+    ],
 ];
