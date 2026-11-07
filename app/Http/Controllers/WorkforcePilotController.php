@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\WorkforceAccount;
 use App\Models\WorkforceCandidate;
 use App\Models\WorkforceEmployer;
+use App\Support\WorkforceRoles;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -124,7 +125,7 @@ class WorkforcePilotController extends Controller
             'career_stage' => ['required', Rule::in(['student', 'graduate', 'licensed'])],
             'institution' => ['required', 'string', 'min:3', 'max:150'],
             'qualification' => ['required', 'string', 'min:3', 'max:150'],
-            'desired_role' => ['required', 'string', 'min:3', 'max:100'],
+            'desired_role' => ['required', Rule::in(array_keys(WorkforceRoles::ROLES))],
             'state' => ['required', 'string', 'max:80'],
             'city' => ['nullable', 'string', 'max:80'],
             'shift_preference' => ['required', Rule::in(['weekdays', 'weekends', 'nights', 'flexible'])],
@@ -216,11 +217,16 @@ class WorkforcePilotController extends Controller
             ->whereHas('account', fn ($q) => $q->where('is_active', true)
                 ->whereNotNull('email_verified_at'))
             ->where(function ($q) {
-                $q->where('career_stage', '!=', 'licensed')
-                  ->orWhere(function ($licensed) {
-                      $licensed->where('licence_status', 'verified')
-                          ->whereDate('licence_expires_at', '>=', today());
-                  });
+                // A graduate cannot list as a nurse/doctor/pharmacist or other
+                // regulated practitioner simply by choosing the role label.
+                $q->where(function ($support) {
+                    $support->whereNotIn('desired_role',
+                        WorkforceRoles::licenceRequired())
+                        ->where('career_stage', '!=', 'licensed');
+                })->orWhere(function ($regulated) {
+                    $regulated->where('licence_status', 'verified')
+                        ->whereDate('licence_expires_at', '>=', today());
+                });
             });
         if (isset($filter['state'])) {
             $candidates->where('state', $filter['state']);
@@ -245,7 +251,7 @@ class WorkforcePilotController extends Controller
             'education_verified' => true,
             'licence_verified' => $candidate->licence_status === 'verified'
                 && $candidate->licence_expires_at !== null
-                && $candidate->licence_expires_at->isFuture(),
+                && $candidate->licence_expires_at->greaterThanOrEqualTo(today()),
         ])->values();
 
         return response()->json([
