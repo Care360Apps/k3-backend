@@ -6,10 +6,14 @@ $controller = file_get_contents(__DIR__.'/../app/Http/Controllers/PatientMedical
 if ($routes === false || $controller === false) {
     throw new RuntimeException('Missing medical-file controller or route');
 }
-$authStart = strpos($routes, "Route::middleware('auth:api')->group(function () {", strpos($routes, "Route::get('prescription/") - 4000);
 $routePos = strpos($routes, "Route::get('medical-files/appointments/{appointmentId}/prescription'");
-if ($authStart === false || $routePos === false || $routePos < $authStart) {
-    throw new RuntimeException('Medical-file route must be behind auth:api');
+if ($routePos === false) {
+    throw new RuntimeException('Private medical-file route missing');
+}
+$authStart = strrpos(substr($routes, 0, $routePos), "Route::middleware('auth:api')->group(function () {");
+$groupEnd = $authStart === false ? false : strpos($routes, "\n});", $authStart);
+if ($authStart === false || ($groupEnd !== false && $groupEnd < $routePos)) {
+    throw new RuntimeException('Medical-file route must be within an auth:api group');
 }
 foreach ([
     'where(\'user_id\', $appointment->user_id)',
