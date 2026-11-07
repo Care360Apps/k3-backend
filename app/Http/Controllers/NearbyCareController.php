@@ -230,7 +230,17 @@ final class NearbyCareController extends Controller
             ->selectRaw($distanceSql.' AS distance_km', [
                 $latitude, $longitude, $latitude,
             ])
-            ->havingRaw('distance_km <= ?', [$radius]);
+            ->havingRaw('distance_km <= ?', [$radius])
+            // A home-visit-only professional must be inside their published
+            // service radius. Virtual-capable professionals may still
+            // accept virtual requests inside the patient's search radius.
+            ->havingRaw(
+                '(distance_km <= service_radius_km OR '.
+                'offers_video_call = 1 OR '.
+                '(offers_video_call IS NULL AND '.
+                '(user_role = ? OR user_role IS NULL)))',
+                ['doctor']
+            );
 
         if (isset($input['role'])) {
             if ($input['role'] === 'provider') {
@@ -275,7 +285,9 @@ final class NearbyCareController extends Controller
                 'distance_km' => round((float) $row->distance_km, 1),
                 'offers_video_call' => $row->offers_video_call === null
                     ? ! $isProvider : (bool) $row->offers_video_call,
-                'offers_home_visit' => $isProvider && (bool) $row->offers_home_visit,
+                'offers_home_visit' => $isProvider &&
+                    (bool) $row->offers_home_visit &&
+                    (float) $row->distance_km <= (float) $row->service_radius_km,
                 'service_radius_km' => (int) $row->service_radius_km,
                 'accepting_requests' => true,
                 'on_duty_until' => \Carbon\Carbon::parse($row->on_duty_until)
