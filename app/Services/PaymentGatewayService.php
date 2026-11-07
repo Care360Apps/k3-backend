@@ -114,7 +114,10 @@ class PaymentGatewayService
         } catch (ValidationException $e) {
             throw $e;
         } catch (\Throwable $e) {
-            info("{$type} payment verification failed: ".$e->getMessage());
+            // Gateway exceptions can contain token fragments, reference IDs,
+            // payer attributes or full upstream response bodies. Log only
+            // the approved provider identifier; never raw exception text.
+            info("{$type} payment verification failed.");
             $this->fail();
         }
         if ($modelClass::where('payment_token', $verifiedToken)->exists()) {
