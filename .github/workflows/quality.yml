@@ -31,12 +31,18 @@ jobs:
         run: php tools/test_otp_verification.php
       - name: Isolated payment verification regression cases
         run: php tools/test_payment_verification.php
+      - name: No payment status forgery through appointment completion
+        run: php tools/test_payment_completion_contract.php
+      - name: Private medical authorization and storage source contract
+        run: php tools/test_private_medical_download_contract.php
       - name: Provider approval and valid proximity discovery
         run: php tools/test_provider_discovery_contract.php
       - name: Opt-in Nearby Care shift and location privacy safety
         run: php tools/test_nearby_care_presence_contract.php
       - name: Synthetic Nearby Care staging smoke test self-check (no network)
         run: python3 tools/staging_nearby_care_smoke.py --offline-self-test
+      - name: Guard three-role local BlueStacks demo against production seeding
+        run: php tools/test_local_demo_seeder_contract.php
       - name: PHP syntax of presence and migration
         run: |
           php -l app/Http/Controllers/NearbyCareController.php
