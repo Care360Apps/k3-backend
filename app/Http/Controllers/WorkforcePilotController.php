@@ -136,6 +136,17 @@ class WorkforcePilotController extends Controller
         // verification, regulator and expiry are not writable by applicants.
         $profile = WorkforceCandidate::query()->firstOrCreate(['account_id' => $actor->id]);
         $profile->fill($data);
+        // A changed course, role, training institution or professional scope
+        // invalidates the old evidence. Mere availability/consent toggles do
+        // not, but can hide a profile immediately.
+        $materialFields = [
+            'career_stage', 'institution', 'qualification', 'desired_role', 'state', 'city',
+        ];
+        if ($profile->isDirty($materialFields)) {
+            $profile->verification_status = 'pending';
+            $profile->licence_status = 'not_verified';
+            $profile->licence_expires_at = null;
+        }
         $profile->save();
 
         return response()->json([
@@ -166,6 +177,13 @@ class WorkforcePilotController extends Controller
         ]);
         $profile = WorkforceEmployer::query()->firstOrNew(['account_id' => $actor->id]);
         $profile->fill($data);
+        // Employers must be reverified whenever their legal identity,
+        // registration number or facility category changes.
+        if ($profile->isDirty([
+            'organization_name', 'organization_type', 'registration_number', 'state',
+        ])) {
+            $profile->verification_status = 'pending';
+        }
         $profile->save();
 
         return response()->json([
