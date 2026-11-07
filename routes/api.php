@@ -3,6 +3,7 @@
 use App\Http\Controllers\DoctorApiController;
 use App\Http\Controllers\DoctorNoteController;
 use App\Http\Controllers\PaymentApiController;
+use App\Http\Controllers\PatientMedicalFileController;
 use App\Http\Controllers\ProviderApiController;
 use App\Http\Controllers\UserApiController;
 use Illuminate\Http\Request;
@@ -76,6 +77,12 @@ Route::middleware('auth:api')->group(function () {
     Route::get('appointment_details/{id}', [DoctorApiController::class, 'apiSingleAppointment']);
     Route::post('complete_appointment', [UserApiController::class, 'apiCompleteAppointment']);
     Route::get('prescription/{appointment_id}', [UserApiController::class, 'apiAppointmentPrescription']);
+    // Private-storage only. Old public URLs MUST be retired after client and
+    // document migration; this route never serves public directory files.
+    Route::get('medical-files/appointments/{appointmentId}/prescription',
+        [PatientMedicalFileController::class, 'downloadPrescription'])
+        ->whereNumber('appointmentId')
+        ->middleware('throttle:30,1');
 
     Route::post('update_profile', [UserApiController::class, 'apiUpdateProfile']);
     Route::post('update_image', [UserApiController::class, 'apiUpdateImage']);

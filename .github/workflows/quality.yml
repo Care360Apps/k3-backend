@@ -31,6 +31,8 @@ jobs:
         run: php tools/test_otp_verification.php
       - name: Isolated payment verification regression cases
         run: php tools/test_payment_verification.php
+      - name: Private medical file authorization and storage contract
+        run: php tools/test_private_medical_download_contract.php
       - name: Static chat push safety contract checks (no backend calls)
         run: python3 tools/k3_chat_push_contract_test.py
       - name: Synthetic staging login safety tests (offline; no HTTP)
