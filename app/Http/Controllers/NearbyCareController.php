@@ -24,9 +24,14 @@ final class NearbyCareController extends Controller
             403, 'Professional account required'
         );
         $doctor = Doctor::query()->where('user_id', $user->id)->firstOrFail();
+        // Both Passport user role and linked professional type must agree.
+        // Neither a Patient nor a misconfigured account may toggle someone
+        // else's or a different professional role's public presence.
+        $provider = $user->hasRole('provider');
         abort_unless(
-            $doctor->user_role === 'provider' ||
-            $doctor->user_role === 'doctor' || $doctor->user_role === null,
+            $provider
+                ? $doctor->user_role === 'provider'
+                : ($doctor->user_role === 'doctor' || $doctor->user_role === null),
             403
         );
 
@@ -161,6 +166,18 @@ final class NearbyCareController extends Controller
             ->whereNotNull('p.public_lat')
             ->whereNotNull('p.public_lng')
             ->where('d.status', 1)
+            ->where(function ($q) {
+                $q->where('d.user_role', 'provider')
+                    ->orWhere('d.user_role', 'doctor')
+                    ->orWhereNull('d.user_role');
+            })
+            ->where(function ($q) {
+                $q->where('d.offers_video_call', 1)
+                    ->orWhere(function ($provider) {
+                        $provider->where('d.user_role', 'provider')
+                            ->where('d.offers_home_visit', 1);
+                    });
+            })
             ->where('d.is_approved', 1)
             ->where('d.is_filled', 1)
             ->where('d.subscription_status', 1)
