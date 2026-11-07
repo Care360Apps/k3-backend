@@ -26,6 +26,7 @@ The connected smoke test reads six local process environment variables, supplied
 | Variable | Required value |
 |---|---|
 | K3_STAGING_API_BASE_URL | Verified HTTPS staging/sandbox/test origin, ending in /api/ |
+| K3_STAGING_EXPECTED_HOST | Exact staging host to allowlist, without https:// or any path |
 | K3_STAGING_SYNTHETIC_PROFESSIONAL_BEARER | Staging-only synthetic professional bearer token |
 | K3_STAGING_NEARBY_CARE_SYNTHETIC_ACK | Exactly YES_SYNTHETIC_STAGING_ONLY |
 | K3_STAGING_TEST_PROFESSIONAL_ID | Positive numeric doctor-table ID of the synthetic professional |
@@ -36,7 +37,7 @@ Then run:
 
     python3 tools/staging_nearby_care_smoke.py
 
-Do not put tokens, keys, production service addresses, screenshots of environment variables, patient data or actual practitioner home coordinates in a repository, CI dispatch inputs or chat. This test refuses non-HTTPS and non-staging origins, prints only sanitized PASS/FAIL stages and attempts automatic OFFLINE cleanup even after a failure. If cleanup cannot be verified, immediately log into the staging Doctor/Provider app and switch the synthetic professional OFFLINE manually; do not continue pilot testing.
+Do not put tokens, keys, production service addresses, screenshots of environment variables, patient data or actual practitioner home coordinates in a repository, CI dispatch inputs or chat. This test refuses non-HTTPS and non-staging origins, requires exact hostname matching, does not follow redirects with a professional bearer, prints only sanitized PASS/FAIL stages and attempts automatic OFFLINE cleanup even after a failure. If cleanup cannot be verified, immediately log into the staging Doctor/Provider app and switch the synthetic professional OFFLINE manually; do not continue pilot testing.
 
 ## End-to-end mobile acceptance
 
@@ -53,5 +54,13 @@ After the API smoke test passes, point a separate **staging-connected Patient an
 ## Developer sign-off and handoff
 
 Record the **immutable backend, Patient and Doctor/Provider commit SHAs**, migration revision and rollback plan, staging account type and synthetic ID (never token), source checks, test run statuses, device screenshots containing only synthetic content, medical-file authorization results and outstanding security issues.
+
+The staging Namecheap host must run Laravel's scheduler (one-minute
+cron invoking artisan schedule:run) after its operator reviews the
+environment. The draft nearby:purge-expired-presence command clears
+expired, offline or revoked public service points; without a configured
+scheduler, expired shifts are filtered from public discovery but their
+coordinates can remain in database storage until explicitly revoked.
+Confirm a manual command with synthetic staging data before enabling cron.
 
 The original developer handles Play Store and Apple App Store signing/upload. DO NOT deploy live while private medical file issue #22, infrastructure credential issue #23, payment security review and clinical workflow regression checks are unresolved.
