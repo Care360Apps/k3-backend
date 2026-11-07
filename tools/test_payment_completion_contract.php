@@ -21,7 +21,7 @@ foreach ([
     if (str_contains($body, "'payment_status' => 1")) {
         throw new RuntimeException($label.' improperly changes payment state');
     }
-    if (! str_contains($body, "&& (int) $appointment->payment_status === 1")) {
+    if (! str_contains($body, '&& (int) $appointment->payment_status === 1')) {
         throw new RuntimeException($label.' allows unverified gateway settlement');
     }
     if (! str_contains($body, "['appointment_status' =>")) {
