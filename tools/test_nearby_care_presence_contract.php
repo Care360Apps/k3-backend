@@ -17,7 +17,7 @@ requireNearby($migration, "->default(false)");
 requireNearby($migration, "->unique()");
 requireNearby($migration, "public_location_consent_at");
 requireNearby($migration, "on_duty_until");
-requireNearby($routes, "Route::get('nearby-care'");
+requireNearby($routes, "Route::post('nearby-care'");
 requireNearby($routes, "Route::post('professional/presence'");
 requireNearby($routes, "Route::middleware('auth:api')->group(function () {");
 requireNearby($ctrl, "hasRole('doctor')");
