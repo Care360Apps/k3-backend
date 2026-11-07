@@ -12,7 +12,12 @@ return new class extends Migration
         // OFFLINE until they explicitly publish a service point and a shift.
         Schema::create('professional_service_presence', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('doctor_id')->unique()->constrained('doctor')->cascadeOnDelete();
+            // Legacy vendor database was imported from SQL, not created by
+            // Laravel migrations. Match its doctor ID safely and add an
+            // actual FK only after verifying the live column type in staging.
+            // Existing Care360 doctor_documents and doctor_notes similarly
+            // use an indexed unsignedBigInteger rather than an assumed FK.
+            $table->unsignedBigInteger('doctor_id')->unique();
             $table->boolean('accepting_requests')->default(false);
             $table->decimal('public_lat', 9, 6)->nullable();
             $table->decimal('public_lng', 9, 6)->nullable();
