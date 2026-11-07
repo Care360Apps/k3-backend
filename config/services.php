@@ -42,6 +42,12 @@ return [
         'secret' => env('RAZORPAY_KEY_SECRET'),
     ],
 
+    'care360_ai' => [
+        // Default OFF until privacy approval, signed-off content and cost caps.
+        'enabled' => env('K3_AI_GUIDE_ENABLED', false),
+        'key' => env('K3_AI_GEMINI_API_KEY'),
+    ],
+
     'google_places' => [
         // Dedicated server-only key, restricted to Places API (New) and the
         // backend's outbound IP. Never include it in /api/setting or Flutter.
