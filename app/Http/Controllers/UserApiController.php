@@ -577,13 +577,23 @@ class UserApiController extends Controller
                 if (is_string($image)) {
                     $image = str_replace(' ', '+', $image);
                 }
-                if (! is_string($image) ||
-                    ! preg_match('#^data:image/png;base64,([A-Za-z0-9+/=]+)$#D', $image, $parts)) {
+                if (! is_string($image)) {
                     throw \Illuminate\Validation\ValidationException::withMessages([
                         'report_image' => 'A valid PNG report image is required.',
                     ]);
                 }
-                $bytes = base64_decode($parts[1], true);
+                // Older clients may send either raw base64 or a PNG data URI.
+                // Preserve both forms while rejecting unrelated MIME types.
+                $prefix = 'data:image/png;base64,';
+                if (str_starts_with($image, $prefix)) {
+                    $image = substr($image, strlen($prefix));
+                }
+                if (preg_match('#\A[A-Za-z0-9+/]+={0,2}\z#D', $image) !== 1) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'report_image' => 'A valid PNG report image is required.',
+                    ]);
+                }
+                $bytes = base64_decode($image, true);
                 if ($bytes === false || strlen($bytes) > 6 * 1024 * 1024 ||
                     ! str_starts_with($bytes, "\x89PNG\r\n\x1a\n")) {
                     throw \Illuminate\Validation\ValidationException::withMessages([
