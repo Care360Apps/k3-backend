@@ -41,6 +41,8 @@ jobs:
         run: php tools/test_nearby_care_presence_contract.php
       - name: Synthetic Nearby Care staging smoke test self-check (no network)
         run: python3 tools/staging_nearby_care_smoke.py --offline-self-test
+      - name: Guard three-role local BlueStacks demo against production seeding
+        run: php tools/test_local_demo_seeder_contract.php
       - name: PHP syntax of presence and migration
         run: |
           php -l app/Http/Controllers/NearbyCareController.php
