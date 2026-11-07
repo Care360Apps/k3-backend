@@ -67,6 +67,8 @@ jobs:
         run: |
           php tools/test_places_gateway_contract.php
           python3 tools/test_ai_guide_contract.py
+      - name: Workforce accounts stay isolated from clinical records
+        run: php tools/test_workforce_pilot_contract.php
       - name: Protect against committed credentials and dumps
         run: |
           if git ls-files | grep -E '(^|/)(\.env$|oauth-private\.key$|key\.properties$|.*\.(jks|keystore|p8|pem|sqlite|db)$|doctro\.sql$|firebase-service-account\.json$|.*service-account.*\.json$)'; then
