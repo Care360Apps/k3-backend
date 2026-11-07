@@ -25,6 +25,8 @@ requireNearby($ctrl, "hasRole('provider')");
 requireNearby($ctrl, '(int) $doctor->is_approved === 1');
 requireNearby($ctrl, '(int) $doctor->is_filled === 1');
 requireNearby($ctrl, "public_location_consent_at");
+requireNearby($ctrl, 'round((float) $data[\'public_lat\'], 2)');
+requireNearby($ctrl, 'round((float) $data[\'public_lng\'], 2)');
 requireNearby($ctrl, "'confirm_public_location' => 'required_if:accepting_requests,1|accepted'");
 requireNearby($ctrl, "->where('p.accepting_requests', 1)");
 requireNearby($ctrl, "->where('p.on_duty_until', '>', now())");
