@@ -765,7 +765,7 @@ class UserApiController extends Controller
 
     public function apiSetting()
     {
-        $setting = Setting::first(['cod', 'doctor_app_id', 'paypal', 'stripe', 'razor', 'flutterwave', 'paystack', 'stripe_public_key', 'razor_key', 'patient_app_id', 'playstore', 'appstore', 'privacy_policy', 'about_us', 'agora_app_id', 'cancel_reason', 'flutterwave_key', 'paystack_public_key', 'currency_symbol', 'currency_code', 'isLiveKey', 'paypal_client_id', 'map_key'])->makeHidden(['companyWhite', 'logo', 'favicon']);
+        $setting = Setting::first(['cod', 'doctor_app_id', 'paypal', 'stripe', 'razor', 'flutterwave', 'paystack', 'stripe_public_key', 'razor_key', 'patient_app_id', 'playstore', 'appstore', 'privacy_policy', 'about_us', 'agora_app_id', 'cancel_reason', 'flutterwave_key', 'paystack_public_key', 'currency_symbol', 'currency_code', 'isLiveKey', 'paypal_client_id'])->makeHidden(['companyWhite', 'logo', 'favicon']);
         if (! auth('api')->check()) {
             $setting = $setting->makeHidden(['stripe_public_key', 'razor_key', 'agora_app_id', 'flutterwave_key', 'paystack_public_key', 'paypal_client_id']);
         }
