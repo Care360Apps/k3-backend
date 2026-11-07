@@ -29,7 +29,7 @@ requireNearby($ctrl, "'confirm_public_location' => 'required_if:accepting_reques
 requireNearby($ctrl, "->where('p.accepting_requests', 1)");
 requireNearby($ctrl, "->where('p.on_duty_until', '>', now())");
 requireNearby($ctrl, "->where('d.is_approved', 1)");
-requireNearby($ctrl, "->havingRaw('distance_km <= p.service_radius_km')");
+requireNearby($ctrl, "->havingRaw('distance_km <= service_radius_km')");
 requireNearby($ctrl, "'accepting_requests_not_booking_confirmed'");
 requireNearby($ctrl, 'round((float) $row->public_lat, 2)');
 requireNearby($ctrl, 'round((float) $row->public_lng, 2)');
