@@ -20,6 +20,16 @@ class SmokeFailure(Exception):
     pass
 
 
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        # Never send synthetic professional credentials to a redirect target.
+        # A wrongly configured staging hostname must fail rather than follow.
+        return None
+
+
+STAGING_HTTP = urllib.request.build_opener(NoRedirect())
+
+
 def checked_base(value):
     parsed = urllib.parse.urlsplit(value.strip())
     host = (parsed.hostname or "").lower()
@@ -48,7 +58,7 @@ def request(base, route, method="GET", body=None, token=None):
         headers["Content-Type"] = "application/json"
     req = urllib.request.Request(url, headers=headers, data=data, method=method)
     try:
-        with urllib.request.urlopen(req, timeout=18) as response:
+        with STAGING_HTTP.open(req, timeout=18) as response:
             status, raw = response.status, response.read(256_000)
     except urllib.error.HTTPError as exc:
         status, raw = exc.code, exc.read(256_000)
@@ -106,6 +116,11 @@ def offline_self_test():
         raise SmokeFailure("Offline origin restriction test failed")
     expect(checked_base("https://staging.example.test/api/") ==
            "https://staging.example.test/api/", "staging URL allowlist")
+    dummy_request = urllib.request.Request("https://staging.example.test/api/")
+    expect(NoRedirect().redirect_request(
+        dummy_request, None, 302, "Moved", {},
+        "https://different-host.example.test/api/") is None,
+        "never follow redirects with staging credentials")
     expect(included([{"id": 42, "accepting_requests": True}], 42),
            "synthetic inclusion checker")
     expect(not included([{"id": 42, "accepting_requests": False}], 42),
