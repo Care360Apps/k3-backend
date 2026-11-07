@@ -23,8 +23,8 @@ record access, and is NOT emergency dispatch.
    - Only an approved, active, completed, subscribed Doctor/Provider whose
      allowed service flags permit appointments can start a shift
    - Shift expires automatically; there is no continuous GPS access
-3. Patient/public `GET /api/nearby-care?lat=...&lng=...&radius_km=20&limit=30`
-   returns public, opted-in service points only, near the chosen location.
+3. Patient/public `POST /api/nearby-care` with coarse, explicitly selected area coordinates in the request body (`lat`, `lng`, `radius_km`, `limit`)
+   returns public, opted-in service points only, near the chosen location. Use POST rather than a query-string GET to reduce accidental location exposure in proxy/server access logs.
    Optional filters `role=doctor|provider` and
    `visit_type=video_call|home_visit` are server-enforced.
 4. Response uses coarsened public service-area coordinates (2 decimals),
