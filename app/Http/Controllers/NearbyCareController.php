@@ -113,9 +113,13 @@ final class NearbyCareController extends Controller
             $values['public_location_consent_at'] = $now;
         }
 
-        DB::table('professional_service_presence')->updateOrInsert(
-            ['doctor_id' => $doctor->id],
-            $values + ['created_at' => $now]
+        DB::table('professional_service_presence')->upsert(
+            [array_merge([
+                'doctor_id' => $doctor->id,
+                'created_at' => $now,
+            ], $values)],
+            ['doctor_id'],
+            array_keys($values)
         );
         $record = DB::table('professional_service_presence')
             ->where('doctor_id', $doctor->id)->first();
@@ -163,8 +167,25 @@ final class NearbyCareController extends Controller
             ->whereBetween('p.public_lat', [
                 max(-90, $latitude - $latDelta),
                 min(90, $latitude + $latDelta),
-            ])
-            ->select([
+            ]);
+        // Also bound longitude to avoid querying all east/west candidates.
+        // The split predicate safely covers the international date line.
+        if ($longitude - $lngDelta < -180) {
+            $query->where(function ($q) use ($longitude, $lngDelta) {
+                $q->where('p.public_lng', '>=', $longitude - $lngDelta + 360)
+                    ->orWhere('p.public_lng', '<=', $longitude + $lngDelta);
+            });
+        } elseif ($longitude + $lngDelta > 180) {
+            $query->where(function ($q) use ($longitude, $lngDelta) {
+                $q->where('p.public_lng', '>=', $longitude - $lngDelta)
+                    ->orWhere('p.public_lng', '<=', $longitude + $lngDelta - 360);
+            });
+        } else {
+            $query->whereBetween('p.public_lng', [
+                $longitude - $lngDelta, $longitude + $lngDelta,
+            ]);
+        }
+        $query->select([
                 'd.id', 'd.name', 'd.user_role', 'd.provider_type_id',
                 'd.offers_video_call', 'd.offers_home_visit',
                 'd.appointment_fees', 'd.hourly_rate',
