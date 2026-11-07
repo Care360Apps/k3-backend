@@ -1,0 +1,68 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Appointment;
+use App\Models\Doctor;
+use App\Models\Prescription;
+use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
+
+/**
+ * Phase 1 of medical-document privacy migration.
+ *
+ * Only serves files that are already in private storage; it deliberately
+ * NEVER falls back to public/prescription/upload. Existing public documents
+ * need a separately approved, audited, reversible migration.
+ */
+class PatientMedicalFileController extends Controller
+{
+    public function downloadPrescription(Request $request, int $appointmentId): BinaryFileResponse
+    {
+        $user = $request->user('api');
+        abort_unless($user, 401);
+
+        $appointment = Appointment::query()
+            ->select(['id', 'user_id', 'doctor_id'])
+            ->findOrFail($appointmentId);
+
+        $isPatient = (int) $appointment->user_id === (int) $user->id;
+        // An assigned doctor/provider has access to this appointment only.
+        $isAssignedProfessional = Doctor::query()
+            ->where('user_id', $user->id)
+            ->whereKey($appointment->doctor_id)
+            ->exists();
+        abort_unless($isPatient || $isAssignedProfessional, 404);
+
+        $prescription = Prescription::query()
+            ->where('appointment_id', $appointment->id)
+            ->where('user_id', $appointment->user_id)
+            ->firstOrFail(['id', 'pdf']);
+
+        $name = (string) $prescription->pdf;
+        // Restrict names to server-generated PDFs; never accept request paths,
+        // user-provided filenames, traversal sequences or arbitrary extensions.
+        abort_unless(
+            preg_match('/\A[a-zA-Z0-9_-]{16,80}\.pdf\z/D', $name) === 1,
+            404
+        );
+
+        $folder = storage_path('app/private/medical/prescriptions');
+        $base = realpath($folder);
+        $full = realpath($folder.DIRECTORY_SEPARATOR.$name);
+        abort_unless(
+            $base !== false && $full !== false &&
+            str_starts_with($full, $base.DIRECTORY_SEPARATOR) &&
+            is_file($full) && ! is_link($folder.DIRECTORY_SEPARATOR.$name),
+            404
+        );
+
+        return response()->download($full, 'care360-prescription.pdf', [
+            'Content-Type' => 'application/pdf',
+            'Cache-Control' => 'private, no-store, max-age=0',
+            'Pragma' => 'no-cache',
+            'X-Content-Type-Options' => 'nosniff',
+            'X-Robots-Tag' => 'noindex, nofollow',
+        ]);
+    }
+}
