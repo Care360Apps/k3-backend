@@ -33,6 +33,14 @@ jobs:
         run: php tools/test_payment_verification.php
       - name: Provider approval and valid proximity discovery
         run: php tools/test_provider_discovery_contract.php
+      - name: Opt-in Nearby Care shift and location privacy safety
+        run: php tools/test_nearby_care_presence_contract.php
+      - name: Synthetic Nearby Care staging smoke test self-check (no network)
+        run: python3 tools/staging_nearby_care_smoke.py --offline-self-test
+      - name: PHP syntax of presence and migration
+        run: |
+          php -l app/Http/Controllers/NearbyCareController.php
+          php -l database/migrations/2026_11_07_000001_create_professional_service_presence_table.php
       - name: Static chat push safety contract checks (no backend calls)
         run: python3 tools/k3_chat_push_contract_test.py
       - name: Synthetic staging login safety tests (offline; no HTTP)

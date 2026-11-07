@@ -4,6 +4,7 @@ use App\Http\Controllers\DoctorApiController;
 use App\Http\Controllers\DoctorNoteController;
 use App\Http\Controllers\PaymentApiController;
 use App\Http\Controllers\ProviderApiController;
+use App\Http\Controllers\NearbyCareController;
 use App\Http\Controllers\UserApiController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -45,6 +46,8 @@ Route::post('near_by_doctor', [UserApiController::class, 'apiNearByDoctor']);
 Route::post('doctor_details/{id}', [UserApiController::class, 'apiSingleDoctor']);
 Route::get('provider_types', [ProviderApiController::class, 'apiProviderTypes']);
 Route::post('providers', [UserApiController::class, 'apiProviders']);
+Route::post('nearby-care', [NearbyCareController::class, 'nearby'])
+    ->middleware('throttle:30,1');
 Route::post('provider_details/{id}', [UserApiController::class, 'apiSingleProvider']);
 Route::post('/timeslot', [UserApiController::class, 'apiTimeslot']);
 Route::get('/setting', [UserApiController::class, 'apiSetting']);
@@ -117,6 +120,12 @@ Route::middleware('auth:api')->group(function () {
     Route::get('working_hours', [DoctorApiController::class, 'apiWorkingHours']);
     Route::post('update_time', [DoctorApiController::class, 'apiUpdateWorkingHours']);
     Route::get('doctor_profile', [DoctorApiController::class, 'apiLoginDoctor']);
+    // Professional-only opt-in availability, never derived from device GPS
+    // automatically; each on-duty shift expires without renewal.
+    Route::get('professional/presence', [NearbyCareController::class, 'myStatus'])
+        ->middleware('throttle:30,1');
+    Route::post('professional/presence', [NearbyCareController::class, 'update'])
+        ->middleware('throttle:10,1');
     Route::post('update_doctor', [DoctorApiController::class, 'apiUpdateDoctor']);
     Route::get('doctor_review', [DoctorApiController::class, 'apiDoctorReview']);
     Route::get('treatment', [DoctorApiController::class, 'apiTreatment']);
