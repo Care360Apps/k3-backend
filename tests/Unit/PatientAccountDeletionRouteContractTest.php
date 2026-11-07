@@ -33,6 +33,8 @@ class PatientAccountDeletionRouteContractTest extends TestCase
     public function test_erasure_service_and_appointment_guard_remain_intact(): void
     {
         $controller = file_get_contents(dirname(__DIR__, 2).'/app/Http/Controllers/UserApiController.php');
+        $this->assertStringContainsString('Patient access required', $controller);
+        $this->assertStringContainsString('$user->roles()->exists()', $controller);
         $this->assertStringContainsString('Appointment::hasUpcomingForPatient', $controller);
         $this->assertStringContainsString('(new AccountErasureService)->erase($user)', $controller);
     }
