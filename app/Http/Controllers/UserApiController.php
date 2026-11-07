@@ -572,6 +572,11 @@ class UserApiController extends Controller
                 // A public-file exposure migration is tracked separately and
                 // must be completed before the final security sign-off.
                 $image = $request->report_image[$i];
+                // Preserve old form-encoded uploads where a '+' became a
+                // space, while still rejecting non-base64 content below.
+                if (is_string($image)) {
+                    $image = str_replace(' ', '+', $image);
+                }
                 if (! is_string($image) ||
                     ! preg_match('#^data:image/png;base64,([A-Za-z0-9+/=]+)$#D', $image, $parts)) {
                     throw \Illuminate\Validation\ValidationException::withMessages([
