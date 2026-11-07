@@ -4,7 +4,10 @@
 $ctrl = file_get_contents(__DIR__.'/../app/Http/Controllers/NearbyCareController.php');
 $routes = file_get_contents(__DIR__.'/../routes/api.php');
 $migration = file_get_contents(__DIR__.'/../database/migrations/2026_11_07_000001_create_professional_service_presence_table.php');
-if ($ctrl === false || $routes === false || $migration === false) {
+$cleanup = file_get_contents(__DIR__.'/../app/Console/Commands/PurgeExpiredNearbyPresence.php');
+$schedule = file_get_contents(__DIR__.'/../app/Console/Kernel.php');
+if ($ctrl === false || $routes === false || $migration === false ||
+    $cleanup === false || $schedule === false) {
     throw new RuntimeException('Missing nearby-care source');
 }
 function requireNearby(string $source, string $needle): void
@@ -17,6 +20,13 @@ requireNearby($migration, "->default(false)");
 requireNearby($migration, "->unique()");
 requireNearby($migration, "public_location_consent_at");
 requireNearby($migration, "on_duty_until");
+requireNearby($cleanup, "nearby:purge-expired-presence");
+requireNearby($cleanup, "'public_lat' => null");
+requireNearby($cleanup, "'public_lng' => null");
+requireNearby($cleanup, "'public_location_consent_at' => null");
+requireNearby($cleanup, "->orWhere('on_duty_until', '<=', \$now)");
+requireNearby($schedule, "nearby:purge-expired-presence");
+requireNearby($schedule, "->everyFiveMinutes()");
 requireNearby($routes, "Route::post('nearby-care'");
 requireNearby($routes, "Route::post('professional/presence'");
 requireNearby($routes, "Route::middleware('auth:api')->group(function () {");
