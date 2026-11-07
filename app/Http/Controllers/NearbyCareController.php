@@ -127,6 +127,12 @@ final class NearbyCareController extends Controller
             $values['public_lng'] = $lng;
             $values['service_radius_km'] = (int) ($data['service_radius_km'] ?? 10);
             $values['public_location_consent_at'] = $now;
+        } else {
+            // "Go offline" also withdraws public-location consent. Do not
+            // retain a precise place or implicit opt-in for the next shift.
+            $values['public_lat'] = null;
+            $values['public_lng'] = null;
+            $values['public_location_consent_at'] = null;
         }
 
         DB::table('professional_service_presence')->upsert(
