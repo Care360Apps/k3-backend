@@ -98,8 +98,13 @@ final class NearbyCareController extends Controller
                 ($isProvider && (int) $doctor->offers_home_visit === 1),
                 403, 'No published eligible service'
             );
-            $lat = (float) $data['public_lat'];
-            $lng = (float) $data['public_lng'];
+            // The published point is intentionally coarse at storage time.
+            // A precise database coordinate plus repeated distance probes
+            // would let outsiders reconstruct an address despite a rounded
+            // map pin. Private meeting points belong only in the booking
+            // workflow after the professional accepts the request.
+            $lat = round((float) $data['public_lat'], 2);
+            $lng = round((float) $data['public_lng'], 2);
             if ($lat === 0.0 && $lng === 0.0) {
                 throw ValidationException::withMessages([
                     'public_lat' => 'Choose a real public practice or service-area location.',
