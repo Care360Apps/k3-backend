@@ -500,6 +500,8 @@ class UserApiController extends Controller
             'payment_type' => 'bail|required',
             'payment_status' => 'bail|nullable',
             'hospital_id' => 'bail|nullable',
+            'report_image' => 'bail|nullable|array|max:8',
+            'report_image.*' => 'bail|required|string|max:8400000',
             'policy_insurer_name' => 'bail|required_if:is_insured,1',
             'policy_number' => 'bail|required_if:is_insured,1',
         ]);
@@ -566,11 +568,25 @@ class UserApiController extends Controller
         if (isset($data['report_image'])) {
             $report = [];
             for ($i = 0; $i < count($data['report_image']); $i++) {
-                $img = $request->report_image[$i];
-                $img = str_replace('data:image/png;base64,', '', $img);
-                $img = str_replace(' ', '+', $img);
+                // Reject malformed, oversized or non-PNG clinical uploads.
+                // A public-file exposure migration is tracked separately and
+                // must be completed before the final security sign-off.
+                $image = $request->report_image[$i];
+                if (! is_string($image) ||
+                    ! preg_match('#^data:image/png;base64,([A-Za-z0-9+/=]+)$#D', $image, $parts)) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'report_image' => 'A valid PNG report image is required.',
+                    ]);
+                }
+                $bytes = base64_decode($parts[1], true);
+                if ($bytes === false || strlen($bytes) > 6 * 1024 * 1024 ||
+                    ! str_starts_with($bytes, "\x89PNG\r\n\x1a\n")) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'report_image' => 'A PNG report image must be no larger than 6 MB.',
+                    ]);
+                }
                 $Iname = CustomController::randomFileName('png');
-                file_put_contents(public_path('/images/upload/').$Iname, base64_decode($img));
+                file_put_contents(public_path('/images/upload/').$Iname, $bytes, LOCK_EX);
                 array_push($report, $Iname);
             }
             $data['report_image'] = json_encode($report);
