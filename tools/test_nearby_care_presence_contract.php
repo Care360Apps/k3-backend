@@ -22,8 +22,8 @@ requireNearby($routes, "Route::post('professional/presence'");
 requireNearby($routes, "Route::middleware('auth:api')->group(function () {");
 requireNearby($ctrl, "hasRole('doctor')");
 requireNearby($ctrl, "hasRole('provider')");
-requireNearby($ctrl, "(int) $doctor->is_approved === 1");
-requireNearby($ctrl, "(int) $doctor->is_filled === 1");
+requireNearby($ctrl, '(int) $doctor->is_approved === 1');
+requireNearby($ctrl, '(int) $doctor->is_filled === 1');
 requireNearby($ctrl, "public_location_consent_at");
 requireNearby($ctrl, "'confirm_public_location' => 'required_if:accepting_requests,1|accepted'");
 requireNearby($ctrl, "->where('p.accepting_requests', 1)");
@@ -31,8 +31,8 @@ requireNearby($ctrl, "->where('p.on_duty_until', '>', now())");
 requireNearby($ctrl, "->where('d.is_approved', 1)");
 requireNearby($ctrl, "->havingRaw('distance_km <= p.service_radius_km')");
 requireNearby($ctrl, "'accepting_requests_not_booking_confirmed'");
-requireNearby($ctrl, "round((float) $row->public_lat, 2)");
-requireNearby($ctrl, "round((float) $row->public_lng, 2)");
+requireNearby($ctrl, 'round((float) $row->public_lat, 2)');
+requireNearby($ctrl, 'round((float) $row->public_lng, 2)');
 if (str_contains($ctrl, "device_gps") || str_contains($ctrl, "patient_address") ||
     str_contains($ctrl, "return response()->json(['data' => $doctor])")) {
     throw new RuntimeException('Private location or clinical metadata in public nearby response');
