@@ -89,8 +89,12 @@ final class NearbyCareController extends Controller
                 403, 'Professional must be verified and active'
             );
             $isProvider = $doctor->user_role === 'provider';
+            // Match existing ConsultationCapabilities: legacy Doctor rows
+            // with a NULL video flag may still offer virtual consultations.
+            $offersVirtual = $doctor->offers_video_call === null
+                ? ! $isProvider : (int) $doctor->offers_video_call === 1;
             abort_unless(
-                (int) $doctor->offers_video_call === 1 ||
+                $offersVirtual ||
                 ($isProvider && (int) $doctor->offers_home_visit === 1),
                 403, 'No published eligible service'
             );
@@ -175,6 +179,13 @@ final class NearbyCareController extends Controller
             })
             ->where(function ($q) {
                 $q->where('d.offers_video_call', 1)
+                    ->orWhere(function ($legacyDoctor) {
+                        $legacyDoctor->whereNull('d.offers_video_call')
+                            ->where(function ($role) {
+                                $role->where('d.user_role', 'doctor')
+                                    ->orWhereNull('d.user_role');
+                            });
+                    })
                     ->orWhere(function ($provider) {
                         $provider->where('d.user_role', 'provider')
                             ->where('d.offers_home_visit', 1);
@@ -230,7 +241,16 @@ final class NearbyCareController extends Controller
                 ->where('d.offers_home_visit', 1)
                 ->havingRaw('distance_km <= service_radius_km');
         } elseif (($input['visit_type'] ?? null) === 'video_call') {
-            $query->where('d.offers_video_call', 1);
+            $query->where(function ($q) {
+                $q->where('d.offers_video_call', 1)
+                    ->orWhere(function ($legacyDoctor) {
+                        $legacyDoctor->whereNull('d.offers_video_call')
+                            ->where(function ($role) {
+                                $role->where('d.user_role', 'doctor')
+                                    ->orWhereNull('d.user_role');
+                            });
+                    });
+            });
         }
         // MySQL/MariaDB supported by the existing Namecheap Laravel service.
         // Use bounded, indexed query; no access to private live device GPS.
@@ -248,7 +268,8 @@ final class NearbyCareController extends Controller
                 'lat' => round((float) $row->public_lat, 2),
                 'lng' => round((float) $row->public_lng, 2),
                 'distance_km' => round((float) $row->distance_km, 1),
-                'offers_video_call' => (bool) $row->offers_video_call,
+                'offers_video_call' => $row->offers_video_call === null
+                    ? ! $isProvider : (bool) $row->offers_video_call,
                 'offers_home_visit' => $isProvider && (bool) $row->offers_home_visit,
                 'service_radius_km' => (int) $row->service_radius_km,
                 'accepting_requests' => true,
