@@ -28,9 +28,9 @@ $checks = [
         && str_contains($code['api'], "AuthenticateWorkforce::class"),
     'No Passport or clinical bearer in guard' => !str_contains($code['middleware'], 'auth:api')
         && !str_contains($code['middleware'], 'Passport::')
-        && str_contains($code['middleware'], "hash('sha256', $rawToken)"),
+        && str_contains($code['middleware'], 'hash(\'sha256\', $rawToken)'),
     'Tokens are hashed and time limited' => str_contains($code['controller'],
-        "hash('sha256', $raw)") && str_contains($code['controller'],
+        'hash(\'sha256\', $raw)') && str_contains($code['controller'],
         "config('workforce.session_hours', 12)"),
     'Candidate cannot set verification fields' => str_contains($code['controller'],
         "'verification_status', 'verified'")
