@@ -48,7 +48,9 @@ final class NearbyCareController extends Controller
             'public_lat' => $record->public_lat ?? null,
             'public_lng' => $record->public_lng ?? null,
             'service_radius_km' => $record->service_radius_km ?? 10,
-            'on_duty_until' => $record->on_duty_until ?? null,
+            'on_duty_until' => $record !== null && $record->on_duty_until !== null
+                ? \Carbon\Carbon::parse($record->on_duty_until)->utc()->toIso8601String()
+                : null,
             'public_location_consent_at' => $record->public_location_consent_at ?? null,
         ];
     }
@@ -250,7 +252,8 @@ final class NearbyCareController extends Controller
                 'offers_home_visit' => $isProvider && (bool) $row->offers_home_visit,
                 'service_radius_km' => (int) $row->service_radius_km,
                 'accepting_requests' => true,
-                'on_duty_until' => $row->on_duty_until,
+                'on_duty_until' => \Carbon\Carbon::parse($row->on_duty_until)
+                    ->utc()->toIso8601String(),
             ];
         }
 
