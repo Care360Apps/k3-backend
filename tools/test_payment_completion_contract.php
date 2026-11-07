@@ -32,7 +32,7 @@ foreach ([
 
 $reset = file_get_contents(__DIR__.'/../app/Http/Controllers/PasswordResetController.php');
 if (! str_contains($patient, "'report_image' => 'bail|nullable|array|max:8'") ||
-    ! str_contains($patient, 'base64_decode($parts[1], true)') ||
+    ! str_contains($patient, 'base64_decode($image, true)') ||
     ! str_contains($patient, 'strlen($bytes) > 6 * 1024 * 1024')) {
     throw new RuntimeException('Clinical image upload size/type guard removed');
 }
