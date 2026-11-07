@@ -31,7 +31,12 @@ record access, and is NOT emergency dispatch.
    returns public, opted-in service points only, near the chosen location. Use POST rather than a query-string GET to reduce accidental location exposure in proxy/server access logs.
    Optional filters `role=doctor|provider` and
    `visit_type=video_call|home_visit` are server-enforced.
-4. Response uses coarsened public service-area coordinates (2 decimals),
+4. Only coarsened public service-area coordinates (2 decimal degrees,
+   approximately kilometer-scale) are stored in this opt-in table; location
+   matching and distance responses use those same deliberately approximate
+   points, preventing reconstruction of an unrounded address from repeated
+   distance queries. This also means the map is **not precise routing**.
+   Response uses these coarsened coordinates,
    approximate **straight-line** distance, and `accepting_requests=true`
    for an unexpired shift. It never returns contact numbers, private
    residences, movement trails, patient/clinical records or auth tokens.
