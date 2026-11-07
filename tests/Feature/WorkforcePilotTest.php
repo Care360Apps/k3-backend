@@ -68,7 +68,7 @@ class WorkforcePilotTest extends TestCase
             'career_stage' => 'student',
             'institution' => 'Synthetic College of Health',
             'qualification' => 'Community Health Training',
-            'desired_role' => 'Supervised care assistant',
+            'desired_role' => 'care_assistant',
             'state' => 'Nasarawa',
             'city' => 'Keffi',
             'shift_preference' => 'weekdays',
@@ -106,6 +106,66 @@ class WorkforcePilotTest extends TestCase
             ->assertStatus(403)->assertJsonPath('code', 'EMPLOYER_NOT_VERIFIED');
         $this->postJson('/api/workforce/v1/candidate/profile', [], $header)
             ->assertForbidden();
+    }
+
+    public function test_unlicensed_nurse_cannot_appear_as_verified_professional(): void
+    {
+        $candidate = $this->signUp('candidate', 'nurse-applicant@example.test');
+        $candidateHeaders = ['Authorization' => 'Bearer '.$candidate['token']];
+        $profile = [
+            'career_stage' => 'graduate',
+            'institution' => 'Synthetic Health College',
+            'qualification' => 'Nursing Degree',
+            'desired_role' => 'nurse',
+            'state' => 'Nasarawa',
+            'city' => 'Keffi',
+            'shift_preference' => 'weekdays',
+            'available_for_work' => true,
+            'consent_to_list' => true,
+        ];
+        $this->postJson('/api/workforce/v1/candidate/profile',
+            $profile, $candidateHeaders)->assertOk();
+        $candidateId = DB::table('workforce_candidates')->first()->id;
+        $candidateAccountId = DB::table('workforce_candidates')->first()->account_id;
+
+        // Simulate an out-of-band education review, not a licence review.
+        DB::table('workforce_candidates')->where('id', $candidateId)
+            ->update(['verification_status' => 'verified']);
+        DB::table('workforce_accounts')->where('id', $candidateAccountId)
+            ->update(['email_verified_at' => now()]);
+
+        $employer = $this->signUp('employer', 'approved-hospital@example.test');
+        $employerHeaders = ['Authorization' => 'Bearer '.$employer['token']];
+        $this->postJson('/api/workforce/v1/employer/profile', [
+            'organization_name' => 'Approved Synthetic Hospital',
+            'organization_type' => 'hospital',
+            'registration_number' => 'CAC-TEST-1001',
+            'state' => 'Nasarawa',
+        ], $employerHeaders)->assertOk();
+        $employerId = DB::table('workforce_employers')->first()->account_id;
+        DB::table('workforce_employers')->where('account_id', $employerId)
+            ->update(['verification_status' => 'verified']);
+        DB::table('workforce_accounts')->where('id', $employerId)
+            ->update(['email_verified_at' => now()]);
+
+        $this->getJson('/api/workforce/v1/candidates', $employerHeaders)
+            ->assertOk()->assertJsonCount(0, 'data');
+
+        DB::table('workforce_candidates')->where('id', $candidateId)
+            ->update([
+                'licence_status' => 'verified',
+                'licence_expires_at' => now()->addMonths(6)->toDateString(),
+            ]);
+        $this->getJson('/api/workforce/v1/candidates', $employerHeaders)
+            ->assertOk()->assertJsonCount(1, 'data');
+
+        // Material changes invalidate institutional and licence review.
+        $profile['qualification'] = 'Changed qualification without evidence';
+        $this->postJson('/api/workforce/v1/candidate/profile',
+            $profile, $candidateHeaders)
+            ->assertOk()->assertJsonPath('data.verification_status', 'pending');
+        $this->getJson('/api/workforce/v1/candidates', $employerHeaders)
+            ->assertOk()->assertJsonCount(0, 'data');
     }
 
     public function test_sessions_are_hashed_separate_and_revocable(): void
