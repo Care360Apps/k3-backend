@@ -146,17 +146,23 @@ def main():
     unauth_status, _ = request(base, "professional/presence")
     expect(unauth_status in (401, 403), "unauthenticated professional status denied")
 
-    started = False
-    professional_id = None
     try:
+        professional_id = int(os.environ["K3_STAGING_TEST_PROFESSIONAL_ID"])
+        if professional_id < 1:
+            raise ValueError
+    except (ValueError, KeyError):
+        raise SmokeFailure("A positive synthetic professional ID is required.")
+    started = False
+    try:
+        # Always attempt cleanup if the server might have accepted this write,
+        # even when a socket/response error prevents observing success.
+        started = True
         status, response = request(base, "professional/presence", "POST",
             body={"accepting_requests": 1,
                   "public_lat": round(lat, 2), "public_lng": round(lng, 2),
                   "service_radius_km": 10, "minutes_on_duty": 15,
                   "confirm_public_location": 1},
             token=token)
-        # An unreachable response might still have created the shift.
-        started = True
         expect(status == 200 and isinstance(response.get("data"), dict) and
                response["data"].get("accepting_requests") is True,
                "synthetic professional activates consented shift")
@@ -172,33 +178,24 @@ def main():
         matches = [x for x in rows if isinstance(x, dict) and
                    x.get("lat") == round(lat, 2) and x.get("lng") == round(lng, 2)]
         expect(len(matches) > 0, "synthetic on-duty public point is discoverable")
-        # The database may have multiple synthetic professionals at a point.
-        # A unique professional ID is supplied optionally for stronger assertions.
-        id_text = os.getenv("K3_STAGING_TEST_PROFESSIONAL_ID", "").strip()
-        if id_text:
-            professional_id = int(id_text)
-            expect(included(rows, professional_id), "exact synthetic professional appears")
-            matching = next(x for x in rows if x.get("id") == professional_id)
-            expect(matching.get("distance_km") is not None and
-                   matching.get("accepting_requests") is True and
-                   matching.get("on_duty_until"), "distance, consent and shift fields returned")
-            sensitive = {"email", "phone", "dob", "patient_address", "agora_token",
-                         "device_token", "clinical_notes", "home_address"}
-            expect(not sensitive.intersection(matching.keys()),
-                   "public response excludes private and clinical fields")
+        # A unique professional ID is mandatory to avoid false passing when
+        # another synthetic professional shares the same public coordinate.
+        expect(included(rows, professional_id), "exact synthetic professional appears")
+        matching = next(x for x in rows if x.get("id") == professional_id)
+        expect(matching.get("distance_km") is not None and
+               matching.get("accepting_requests") is True and
+               matching.get("on_duty_until"), "distance, consent and shift fields returned")
+        sensitive = {"email", "phone", "dob", "patient_address", "agora_token",
+                     "device_token", "clinical_notes", "home_address"}
+        expect(not sensitive.intersection(matching.keys()),
+               "public response excludes private and clinical fields")
 
         far_lat = lat - 0.5 if lat > 85 else lat + 0.5
         status, distant = search(base, far_lat, lng, 5)
         distant_rows = entries(distant)
         expect(status == 200 and distant_rows is not None, "distant query is valid")
-        if professional_id is not None:
-            expect(not included(distant_rows, professional_id),
-                   "far-away patient cannot match synthetic professional")
-        else:
-            expect(not any(isinstance(x, dict) and
-                           x.get("lat") == round(lat, 2) and
-                           x.get("lng") == round(lng, 2) for x in distant_rows),
-                   "far-away query excludes synthetic service location")
+        expect(not included(distant_rows, professional_id),
+               "far-away patient cannot match synthetic professional")
 
     finally:
         if started:
@@ -210,11 +207,10 @@ def main():
                        and off_body["data"].get("accepting_requests") is False,
                        "synthetic professional automatically switched offline")
                 check_status, check = search(base, lat, lng, 5)
-                if professional_id is not None:
-                    rows = entries(check)
-                    expect(check_status == 200 and rows is not None and
-                           not included(rows, professional_id),
-                           "offline professional removed from patient results")
+                rows = entries(check)
+                expect(check_status == 200 and rows is not None and
+                       not included(rows, professional_id),
+                       "offline professional removed from patient results")
             except Exception:
                 raise SmokeFailure(
                     "OFFLINE CLEANUP NOT VERIFIED. Manually use the staging professional account "
