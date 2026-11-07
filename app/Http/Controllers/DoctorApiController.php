@@ -526,7 +526,12 @@ class DoctorApiController extends Controller
         if (! $appointment) {
             return response(['success' => false, 'msg' => 'Appointment not found'], 404);
         }
-        $appointment->update(['appointment_status' => $request->status, 'payment_status' => 1]);
+        if (in_array(strtolower((string) $appointment->appointment_status), ['complete', 'completed', 'cancel', 'canceled'], true)) {
+            return response(['success' => false, 'msg' => 'Appointment already closed'], 422);
+        }
+        // Care completion/approval does not verify payment; keep payment_status
+        // controlled only by the gateway/payment-confirmation flow.
+        $appointment->update(['appointment_status' => $request->status]);
         $user = User::find($appointment->user_id);
         $doctor = Doctor::find($appointment->doctor_id);
         if ($request->status == 'complete') {
@@ -536,7 +541,8 @@ class DoctorApiController extends Controller
                 $settle['doctor_id'] = $appointment->doctor_id;
                 $settle['doctor_amount'] = $appointment->doctor_commission;
                 $settle['admin_amount'] = $appointment->admin_commission;
-                $settle['payment'] = $appointment->payment_type == 'COD' ? 0 : 1;
+                $settle['payment'] = $appointment->payment_type !== 'COD'
+                    && (int) $appointment->payment_status === 1 ? 1 : 0;
                 $settle['doctor_status'] = 0;
                 Settle::create($settle);
             }
