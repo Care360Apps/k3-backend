@@ -32,6 +32,8 @@ requireNearby($ctrl, "->where('p.accepting_requests', 1)");
 requireNearby($ctrl, "->where('p.on_duty_until', '>', now())");
 requireNearby($ctrl, "->where('d.is_approved', 1)");
 requireNearby($ctrl, "->havingRaw('distance_km <= service_radius_km')");
+requireNearby($ctrl, "'(distance_km <= service_radius_km OR '");
+requireNearby($ctrl, '(float) $row->distance_km <= (float) $row->service_radius_km');
 requireNearby($ctrl, "'accepting_requests_not_booking_confirmed'");
 requireNearby($ctrl, '$doctor->offers_video_call === null');
 requireNearby($ctrl, "->whereNull('d.offers_video_call')");
