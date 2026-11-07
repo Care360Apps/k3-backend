@@ -4,6 +4,7 @@ use App\Http\Controllers\DoctorApiController;
 use App\Http\Controllers\DoctorNoteController;
 use App\Http\Controllers\PaymentApiController;
 use App\Http\Controllers\PatientPlaceSearchController;
+use App\Http\Controllers\Care360AiGuideController;
 use App\Http\Controllers\ProviderApiController;
 use App\Http\Controllers\UserApiController;
 use Illuminate\Http\Request;
@@ -23,6 +24,10 @@ use Illuminate\Support\Facades\Route;
 Route::middleware(['auth:api'])->get('/user', function (Request $request) {
     return $request->user();
 });
+
+// Default-off nonclinical guide. Authenticated and strictly throttled.
+Route::post('/ai/guide', [Care360AiGuideController::class, 'guide'])
+    ->middleware(['auth:api', 'throttle:5,1']);
 
 // Onesignal Notification Test, Only for Developers.
 // Route::get('/send-test-notification', [DoctorApiController::class, 'sendTestNotification']);
