@@ -23,7 +23,13 @@ class Kernel extends ConsoleKernel
      */
     protected function schedule(Schedule $schedule)
     {
-        // $schedule->command('inspire')->hourly();
+        // Requires the host's standard Laravel schedule:run cron entry.
+        // If no cron is configured, server filtering still stops public
+        // discovery immediately at expiry, but coordinate retention cleanup
+        // will not run until the scheduler is enabled.
+        $schedule->command('nearby:purge-expired-presence')
+            ->everyFiveMinutes()
+            ->withoutOverlapping();
     }
 
     /**
