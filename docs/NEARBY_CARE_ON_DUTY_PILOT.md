@@ -11,6 +11,10 @@ record access, and is NOT emergency dispatch.
 
 1. Apply `2026_11_07_000001_create_professional_service_presence_table.php`
    to isolated MySQL/MariaDB staging after backup and migration review.
+   The legacy `doctor` ID type was created by a vendor SQL import, so the
+   migration intentionally does not assume a foreign-key type. Confirm the
+   true PK type and create a verified FK/cleanup procedure before production;
+   delete orphan presence rows if a professional profile is removed.
    Existing professionals are **offline** by default and are not
    published from existing `doctor.lat/lng` coordinates.
 2. Authenticated professional:
