@@ -221,6 +221,11 @@ def main():
                 expect(off_status == 200 and isinstance(off_body.get("data"), dict)
                        and off_body["data"].get("accepting_requests") is False,
                        "synthetic professional automatically switched offline")
+                off_details = off_body["data"]
+                expect(off_details.get("public_lat") is None and
+                       off_details.get("public_lng") is None and
+                       off_details.get("public_location_consent_at") is None,
+                       "offline revokes published service location and consent")
                 check_status, check = search(base, lat, lng, 5)
                 rows = entries(check)
                 expect(check_status == 200 and rows is not None and
