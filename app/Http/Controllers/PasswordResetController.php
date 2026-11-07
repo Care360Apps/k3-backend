@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Password;
 
 /**
@@ -51,7 +52,9 @@ class PasswordResetController extends Controller
             ]);
             Mail::to($user->email)->send(new SendMail($content, __('Reset your password')));
         } catch (\Exception $e) {
-            info($e);
+            // SMTP exception bodies can contain recipient addresses and mail
+            // configuration. Never log them in a healthcare application.
+            Log::warning('Care360 password-reset notification delivery failed');
         }
     }
 
