@@ -3,6 +3,7 @@
 use App\Http\Controllers\DoctorApiController;
 use App\Http\Controllers\DoctorNoteController;
 use App\Http\Controllers\PaymentApiController;
+use App\Http\Controllers\PatientPlaceSearchController;
 use App\Http\Controllers\ProviderApiController;
 use App\Http\Controllers\UserApiController;
 use Illuminate\Http\Request;
@@ -87,6 +88,10 @@ Route::middleware('auth:api')->group(function () {
     Route::post('cancel_appointment', [UserApiController::class, 'apiCancelAppointment']);
     Route::get('address', [UserApiController::class, 'apiShowAddress']);
     Route::post('add_address', [UserApiController::class, 'apiAddAddress']);
+    // Authenticated, throttled server-side Places New gateway. Never expose the
+    // server API key or raw Google response to mobile applications.
+    Route::post('places/autocomplete', [PatientPlaceSearchController::class, 'autocomplete'])->middleware('throttle:20,1');
+    Route::post('places/details', [PatientPlaceSearchController::class, 'details'])->middleware('throttle:20,1');
     Route::get('delete_address/{id}', [UserApiController::class, 'apiDeleteAddress']);
     Route::post('add_review', [UserApiController::class, 'apiAddReview']);
     Route::post('check_offer', [UserApiController::class, 'apiCheckCoupon']);
