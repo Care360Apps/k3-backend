@@ -1112,7 +1112,9 @@ class UserApiController extends Controller
         if (in_array(strtolower($appointment->appointment_status ?? ''), ['complete', 'completed', 'cancel'])) {
             return response(['success' => false, 'msg' => 'Appointment already closed'], 422);
         }
-        $appointment->update(['appointment_status' => 'complete', 'payment_status' => 1]);
+        // Completing a consultation is NOT evidence that money was received.
+        // PaymentGatewayService alone may confirm a paid transaction.
+        $appointment->update(['appointment_status' => 'complete']);
         $user = User::find($appointment->user_id);
         $doctor = Doctor::find($appointment->doctor_id);
         if ($doctor && $doctor->based_on == 'commission') {
@@ -1121,7 +1123,10 @@ class UserApiController extends Controller
             $settle['doctor_id'] = $appointment->doctor_id;
             $settle['doctor_amount'] = $appointment->doctor_commission;
             $settle['admin_amount'] = $appointment->admin_commission;
-            $settle['payment'] = $appointment->payment_type == 'COD' ? 0 : 1;
+            // Never mark a settlement paid merely because a non-COD gateway
+            // was selected. The underlying payment must already be verified.
+            $settle['payment'] = $appointment->payment_type !== 'COD'
+                && (int) $appointment->payment_status === 1 ? 1 : 0;
             $settle['doctor_status'] = 0;
             Settle::create($settle);
         }
