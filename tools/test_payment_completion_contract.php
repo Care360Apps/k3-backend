@@ -29,3 +29,15 @@ foreach ([
     }
     echo 'PASS: '.$label.' does not forge verified payments'.PHP_EOL;
 }
+
+$reset = file_get_contents(__DIR__.'/../app/Http/Controllers/PasswordResetController.php');
+if (! str_contains($patient, "'report_image' => 'bail|nullable|array|max:8'") ||
+    ! str_contains($patient, 'base64_decode($parts[1], true)') ||
+    ! str_contains($patient, 'strlen($bytes) > 6 * 1024 * 1024')) {
+    throw new RuntimeException('Clinical image upload size/type guard removed');
+}
+if (! str_contains($reset, "Log::warning('Care360 password-reset notification delivery failed')") ||
+    str_contains($reset, 'info($e)')) {
+    throw new RuntimeException('Password-reset transport errors may leak confidential fields');
+}
+echo 'PASS: report image validation and password-reset log confidentiality'.PHP_EOL;
