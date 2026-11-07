@@ -517,6 +517,8 @@ class UserApiController extends Controller
             'payment_type' => 'bail|required',
             'payment_status' => 'bail|nullable',
             'hospital_id' => 'bail|nullable',
+            'report_image' => 'bail|nullable|array|max:8',
+            'report_image.*' => 'bail|required|string|max:8400000',
             'policy_insurer_name' => 'bail|required_if:is_insured,1',
             'policy_number' => 'bail|required_if:is_insured,1',
         ]);
@@ -583,11 +585,40 @@ class UserApiController extends Controller
         if (isset($data['report_image'])) {
             $report = [];
             for ($i = 0; $i < count($data['report_image']); $i++) {
-                $img = $request->report_image[$i];
-                $img = str_replace('data:image/png;base64,', '', $img);
-                $img = str_replace(' ', '+', $img);
+                // Reject malformed, oversized or non-PNG clinical uploads.
+                // A public-file exposure migration is tracked separately and
+                // must be completed before the final security sign-off.
+                $image = $request->report_image[$i];
+                // Preserve old form-encoded uploads where a '+' became a
+                // space, while still rejecting non-base64 content below.
+                if (is_string($image)) {
+                    $image = str_replace(' ', '+', $image);
+                }
+                if (! is_string($image)) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'report_image' => 'A valid PNG report image is required.',
+                    ]);
+                }
+                // Older clients may send either raw base64 or a PNG data URI.
+                // Preserve both forms while rejecting unrelated MIME types.
+                $prefix = 'data:image/png;base64,';
+                if (str_starts_with($image, $prefix)) {
+                    $image = substr($image, strlen($prefix));
+                }
+                if (preg_match('#\A[A-Za-z0-9+/]+={0,2}\z#D', $image) !== 1) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'report_image' => 'A valid PNG report image is required.',
+                    ]);
+                }
+                $bytes = base64_decode($image, true);
+                if ($bytes === false || strlen($bytes) > 6 * 1024 * 1024 ||
+                    ! str_starts_with($bytes, "\x89PNG\r\n\x1a\n")) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'report_image' => 'A PNG report image must be no larger than 6 MB.',
+                    ]);
+                }
                 $Iname = CustomController::randomFileName('png');
-                file_put_contents(public_path('/images/upload/').$Iname, base64_decode($img));
+                file_put_contents(public_path('/images/upload/').$Iname, $bytes, LOCK_EX);
                 array_push($report, $Iname);
             }
             $data['report_image'] = json_encode($report);
@@ -1129,7 +1160,9 @@ class UserApiController extends Controller
         if (in_array(strtolower($appointment->appointment_status ?? ''), ['complete', 'completed', 'cancel'])) {
             return response(['success' => false, 'msg' => 'Appointment already closed'], 422);
         }
-        $appointment->update(['appointment_status' => 'complete', 'payment_status' => 1]);
+        // Completing a consultation is NOT evidence that money was received.
+        // PaymentGatewayService alone may confirm a paid transaction.
+        $appointment->update(['appointment_status' => 'complete']);
         $user = User::find($appointment->user_id);
         $doctor = Doctor::find($appointment->doctor_id);
         if ($doctor && $doctor->based_on == 'commission') {
@@ -1138,7 +1171,10 @@ class UserApiController extends Controller
             $settle['doctor_id'] = $appointment->doctor_id;
             $settle['doctor_amount'] = $appointment->doctor_commission;
             $settle['admin_amount'] = $appointment->admin_commission;
-            $settle['payment'] = $appointment->payment_type == 'COD' ? 0 : 1;
+            // Never mark a settlement paid merely because a non-COD gateway
+            // was selected. The underlying payment must already be verified.
+            $settle['payment'] = $appointment->payment_type !== 'COD'
+                && (int) $appointment->payment_status === 1 ? 1 : 0;
             $settle['doctor_status'] = 0;
             Settle::create($settle);
         }
