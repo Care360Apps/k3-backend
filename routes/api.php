@@ -3,6 +3,8 @@
 use App\Http\Controllers\DoctorApiController;
 use App\Http\Controllers\DoctorNoteController;
 use App\Http\Controllers\PaymentApiController;
+use App\Http\Controllers\PatientPlaceSearchController;
+use App\Http\Controllers\Care360AiGuideController;
 use App\Http\Controllers\PatientMedicalFileController;
 use App\Http\Controllers\ProviderApiController;
 use App\Http\Controllers\NearbyCareController;
@@ -24,6 +26,10 @@ use Illuminate\Support\Facades\Route;
 Route::middleware(['auth:api'])->get('/user', function (Request $request) {
     return $request->user();
 });
+
+// Isolated nonclinical AI navigation (default OFF) and rate-limited.
+Route::post('/ai/guide', [Care360AiGuideController::class, 'guide'])
+    ->middleware(['auth:api', 'throttle:5,1']);
 
 // Onesignal Notification Test, Only for Developers.
 // Route::get('/send-test-notification', [DoctorApiController::class, 'sendTestNotification']);
@@ -97,6 +103,9 @@ Route::middleware('auth:api')->group(function () {
     Route::post('cancel_appointment', [UserApiController::class, 'apiCancelAppointment']);
     Route::get('address', [UserApiController::class, 'apiShowAddress']);
     Route::post('add_address', [UserApiController::class, 'apiAddAddress']);
+    // The caller's OAuth/API token stays on Care360; Google key is server-only.
+    Route::post('places/autocomplete', [PatientPlaceSearchController::class, 'autocomplete'])->middleware('throttle:20,1');
+    Route::post('places/details', [PatientPlaceSearchController::class, 'details'])->middleware('throttle:20,1');
     Route::get('delete_address/{id}', [UserApiController::class, 'apiDeleteAddress']);
     Route::post('add_review', [UserApiController::class, 'apiAddReview']);
     Route::post('check_offer', [UserApiController::class, 'apiCheckCoupon']);
