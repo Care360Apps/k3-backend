@@ -28,7 +28,7 @@ class PatientMedicalFileController extends Controller
 
         $isPatient = (int) $appointment->user_id === (int) $user->id;
         // An assigned doctor/provider has access to this appointment only.
-        $isAssignedProfessional = Doctor::query()
+        $isAssignedProfessional = ! $isPatient && Doctor::query()
             ->where('user_id', $user->id)
             ->whereKey($appointment->doctor_id)
             ->exists();
