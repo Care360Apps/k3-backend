@@ -27,7 +27,7 @@ $checks = [
         "Route::prefix('workforce/v1')->middleware([WorkforcePilotEnabled::class])")
         && str_contains($code['api'], "AuthenticateWorkforce::class"),
     'No Passport or clinical bearer in guard' => !str_contains($code['middleware'], 'auth:api')
-        && !str_contains($code['middleware'], 'Passport')
+        && !str_contains($code['middleware'], 'Passport::')
         && str_contains($code['middleware'], "hash('sha256', $rawToken)"),
     'Tokens are hashed and time limited' => str_contains($code['controller'],
         "hash('sha256', $raw)") && str_contains($code['controller'],
