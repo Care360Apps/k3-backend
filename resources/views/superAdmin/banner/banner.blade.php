@@ -14,19 +14,20 @@
         <div class="card">
             <div class="card-header w-100 d-flex justify-content-between">
                 @include('superAdmin.auth.exportButtons')
-                @if (count($banners) < 3)
-                    @can('banner_add')
-                        <a href="{{ url('banner/create') }}">{{__("Add New") }}</a>
-                    @endcan
-                @endif
+                @can('banner_add')
+                    <a href="{{ url('banner/create') }}" class="btn btn-primary">{{ __('Add campaign') }}</a>
+                @endcan
             </div>
             <div class="card-body">
                     <table class="w-100 display table datatable">
                         <thead>
                             <tr>
                                 <th> # </th>
-                                <th>{{__('Image')}}</th>
-                                <th>{{__('Status')}}</th>
+                                <th>{{ __('Campaign') }}</th>
+                                <th>{{ __('Image') }}</th>
+                                <th>{{ __('Type') }}</th>
+                                <th>{{ __('Schedule') }}</th>
+                                <th>{{ __('Status') }}</th>
                                 @if (Gate::check('banner_edit') || Gate::check('banner_delete'))
                                     <th> {{__('Action')}} </th>
                                 @endif
@@ -37,9 +38,20 @@
                                 <tr>
                                     <td>{{$loop->iteration}}</td>
                                     <td>
+                                        <strong>{{ $banner->name }}</strong>
+                                        <div class="small text-muted">{{ IlluminateSupportStr::limit($banner->description ?? '', 70) }}</div>
+                                        <div class="small">{{ $banner->link }}</div>
+                                    </td>
+                                    <td>
                                         <a href="{{ $banner->fullImage }}" data-fancybox="gallery2">
                                             <img class="avatar-img rounded-circle" alt="User Image" src="{{ $banner->fullImage }}" height="50" width="50">
                                         </a>
+                                    </td>
+                                    <td>{{ $banner->is_sponsored ? __('Sponsored') : __('Partner') }}</td>
+                                    <td>
+                                        {{ optional($banner->starts_at)->format('Y-m-d') ?? __('Immediately') }}
+                                        —
+                                        {{ optional($banner->ends_at)->format('Y-m-d') ?? __('No end date') }}
                                     </td>
                                     <td>
                                         <label class="cursor-pointer">
