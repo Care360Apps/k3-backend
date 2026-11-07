@@ -46,7 +46,7 @@ Route::post('near_by_doctor', [UserApiController::class, 'apiNearByDoctor']);
 Route::post('doctor_details/{id}', [UserApiController::class, 'apiSingleDoctor']);
 Route::get('provider_types', [ProviderApiController::class, 'apiProviderTypes']);
 Route::post('providers', [UserApiController::class, 'apiProviders']);
-Route::get('nearby-care', [NearbyCareController::class, 'nearby'])
+Route::post('nearby-care', [NearbyCareController::class, 'nearby'])
     ->middleware('throttle:30,1');
 Route::post('provider_details/{id}', [UserApiController::class, 'apiSingleProvider']);
 Route::post('/timeslot', [UserApiController::class, 'apiTimeslot']);
