@@ -100,7 +100,13 @@ Route::middleware('auth:api')->group(function () {
     Route::get('/video_call_history', [UserApiController::class, 'apiVideoCallHistory']);
     Route::post('/add_call_history', [UserApiController::class, 'apiAddHistory']);
     Route::get('/send_notification', [UserApiController::class, 'apiSendNotification']);
-    Route::get('/delete-account', [UserApiController::class, 'deleteAccount']);
+    // The new Patient client uses a deliberate authenticated POST request.
+    // Existing published clients still call the legacy GET endpoint; retire
+    // GET only after installed-app migration and full account-deletion QA.
+    Route::post('/delete-account', [UserApiController::class, 'deleteAccount'])
+        ->middleware('throttle:3,10');
+    Route::get('/delete-account', [UserApiController::class, 'deleteAccount'])
+        ->middleware('throttle:3,10');
     Route::get('/insurers', [UserApiController::class, 'insurers']);
     Route::get('/logout', [UserApiController::class, 'apiLogout']);
     Route::post('/send_message_to_doctor_notification', [UserApiController::class, 'apiSendMessageToDoctorNotificationTrigger'])->middleware('throttle:10,1');
