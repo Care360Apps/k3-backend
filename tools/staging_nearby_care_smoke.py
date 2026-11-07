@@ -30,12 +30,14 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 STAGING_HTTP = urllib.request.build_opener(NoRedirect())
 
 
-def checked_base(value):
+def checked_base(value, expected_host=None):
     parsed = urllib.parse.urlsplit(value.strip())
     host = (parsed.hostname or "").lower()
     is_staging = any(word in host for word in ("staging", "sandbox", "test", "localhost"))
     if parsed.scheme != "https" or not host or not is_staging:
         raise SmokeFailure("A verified HTTPS staging/sandbox/test hostname is required.")
+    if expected_host is not None and host != expected_host.strip().lower():
+        raise SmokeFailure("Staging host does not match operator's explicit allowlist.")
     if parsed.username or parsed.password or parsed.fragment or parsed.query:
         raise SmokeFailure("Staging base URL must have no userinfo, query or fragment.")
     # Never allow a production host disguised as a staging subdomain override.
@@ -114,8 +116,16 @@ def offline_self_test():
         except SmokeFailure:
             continue
         raise SmokeFailure("Offline origin restriction test failed")
-    expect(checked_base("https://staging.example.test/api/") ==
+    expect(checked_base("https://staging.example.test/api/",
+                        expected_host="staging.example.test") ==
            "https://staging.example.test/api/", "staging URL allowlist")
+    try:
+        checked_base("https://staging.example.test/api/",
+                     expected_host="another-staging.example.test")
+    except SmokeFailure:
+        pass
+    else:
+        raise SmokeFailure("Mismatched staging host should be denied")
     dummy_request = urllib.request.Request("https://staging.example.test/api/")
     expect(NoRedirect().redirect_request(
         dummy_request, None, 302, "Moved", {},
@@ -138,7 +148,11 @@ def main():
     if len(sys.argv) != 1:
         raise SmokeFailure("Usage: python3 tools/staging_nearby_care_smoke.py [--offline-self-test]")
 
-    base = checked_base(os.getenv("K3_STAGING_API_BASE_URL", ""))
+    expected_host = os.getenv("K3_STAGING_EXPECTED_HOST", "").strip().lower()
+    if not expected_host:
+        raise SmokeFailure("Operator must provide an exact staging hostname allowlist.")
+    base = checked_base(os.getenv("K3_STAGING_API_BASE_URL", ""),
+                        expected_host=expected_host)
     token = os.getenv("K3_STAGING_SYNTHETIC_PROFESSIONAL_BEARER", "").strip()
     ack = os.getenv("K3_STAGING_NEARBY_CARE_SYNTHETIC_ACK", "").strip()
     if not token or ack != "YES_SYNTHETIC_STAGING_ONLY":
