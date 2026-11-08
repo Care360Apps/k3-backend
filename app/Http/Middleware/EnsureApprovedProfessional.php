@@ -26,10 +26,17 @@ final class EnsureApprovedProfessional
             ->where('user_id', $user->id)
             ->where('is_approved', 1)
             ->where('status', 1)
-            ->whereIn('user_role', ['doctor', 'provider'])
+            ->where(function ($query) {
+                // Approved legacy doctors may have a NULL role column, but
+                // provider accounts must always be explicitly typed.
+                $query->whereIn('user_role', ['doctor', 'provider'])
+                    ->orWhereNull('user_role');
+            })
             ->first();
 
-        if (! $professional || ! $user->hasRole($professional->user_role)) {
+        $professionalRole = $professional?->user_role
+            ?? ($user->hasRole('doctor') ? 'doctor' : null);
+        if (! $professional || ! $professionalRole || ! $user->hasRole($professionalRole)) {
             return response()->json(['success' => false, 'code' => 'PROFESSIONAL_NOT_APPROVED'], 403);
         }
 
