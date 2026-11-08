@@ -814,7 +814,10 @@ class UserApiController extends Controller
         $prescription['pdfPath'] = PrivatePrescriptionStorage::appointmentUrl(
             (int) $appointment->id, $prescription->pdf
         );
-        if (PrivatePrescriptionStorage::enabled()) {
+        // Private files must stay private even if the write feature flag
+        // is switched off during rollback. Legacy filenames remain untouched
+        // until their own audited migration completes.
+        if (PrivatePrescriptionStorage::isPrivateFilename($prescription->pdf)) {
             $prescription->makeHidden(['pdf']);
         }
         $appointment->prescription = $prescription;
