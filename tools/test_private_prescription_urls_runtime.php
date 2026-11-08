@@ -4,14 +4,14 @@
  * Executes the real private-prescription URL selector without booting Laravel,
  * using synthetic filenames only. No database, environment or patient data.
  */
+use App\Services\PrivatePrescriptionStorage;
+
 function url(string $path): string
 {
     return 'https://care360.example.test/'.ltrim($path, '/');
 }
 
 require dirname(__DIR__).'/app/Services/PrivatePrescriptionStorage.php';
-
-use App\Services\PrivatePrescriptionStorage;
 
 $private = 'k3priv_'.str_repeat('a', 40).'.pdf';
 $legacy = str_repeat('b', 32).'.pdf';
