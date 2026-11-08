@@ -38,6 +38,8 @@
 | `/api/professional/presence` | GET/POST | Opt-in location and shift | Separate Nearby Care policy, rate-limited |
 | `/api/stripe/payment_intent` | POST | Existing amount | Intent generated with authenticated user metadata; **not yet final order-server pricing** |
 
+**Subscription and care-status safety change:** unpaid subscription purchases no longer activate a new plan or cancel an existing paid plan. Professional appointment transitions use row locking and prevent duplicate settlement creation. Re-test doctor subscription purchase, commission and notification behavior with synthetic payment outcomes.
+
 **Breaking staging-only payment safety change:** A supplied Stripe `ch_...` reference must have `metadata.user_id` equal to the authenticated account. Legacy web charges without that binding now fail verification rather than authorizing another user's payment. Publisher/payment integrator must resolve this before release; do not bypass.
 
 ## Workforce ↔ Laravel (feature OFF)
