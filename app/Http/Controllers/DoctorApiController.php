@@ -937,7 +937,7 @@ class DoctorApiController extends Controller
     {
         $request->validate([
             'amount' => 'bail|required|numeric|min:1|max:10000000',
-            'email' => 'bail|required|email',
+            'email' => 'sometimes|email',
             'currency' => 'bail|required|string|max:3',
         ]);
         $secretKey = config('services.paystack.secret');
