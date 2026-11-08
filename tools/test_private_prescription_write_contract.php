@@ -56,7 +56,7 @@ $checks = [
         str_contains($code['patient'], "'Prescription not found'"),
     'Authenticated private download remains ownership restricted' =>
         str_contains($code['download'], '$isPatient || $isAssignedProfessional')
-        && str_contains($code['download'], "where('user_id', $appointment->user_id)")
+        && str_contains($code['download'], 'where(\'user_id\', $appointment->user_id)')
         && str_contains($code['routes'], "Route::middleware('auth:api')->group(function () {"),
 ];
 
