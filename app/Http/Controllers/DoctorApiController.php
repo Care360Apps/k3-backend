@@ -321,6 +321,12 @@ class DoctorApiController extends Controller
         if (! $doctorId) {
             return (new UserApiController)->apiSingleAppointment($id);
         }
+        $professional = Doctor::query()->whereKey($doctorId)
+            ->where('user_id', auth()->id())->where('is_approved', 1)
+            ->where('status', 1)->first();
+        if (! $professional) {
+            return response(['success' => false, 'msg' => 'Appointment not found'], 404);
+        }
         (new CustomController)->cancel_max_order();
         $appointment = Appointment::with('user:id,image')->where('id', $id)->where('doctor_id', $doctorId)->first();
         if (! $appointment) {
