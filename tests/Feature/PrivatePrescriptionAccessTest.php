@@ -31,6 +31,7 @@ class PrivatePrescriptionAccessTest extends TestCase
             $table->string('name')->nullable();
             $table->string('email')->nullable();
             $table->string('password')->nullable();
+            $table->boolean('status')->default(true);
         });
         Schema::create('roles', function (Blueprint $table) {
             $table->id();
@@ -143,6 +144,18 @@ class PrivatePrescriptionAccessTest extends TestCase
             ->get('/api/medical-files/appointments/301/prescription')
             ->assertNotFound();
     }
+    public function test_suspended_doctor_cannot_download_but_patient_still_can(): void
+    {
+        $url = '/api/medical-files/appointments/301/prescription';
+        $this->actingAs(User::findOrFail(102), 'api')->get($url)->assertOk();
+
+        DB::table('users')->where('id', 102)->update(['status' => 0]);
+        $this->actingAs(User::findOrFail(102), 'api')->get($url)->assertNotFound();
+
+        // A clinician's suspension must not silently revoke patient access.
+        $this->actingAs(User::findOrFail(101), 'api')->get($url)->assertOk();
+    }
+
     public function test_revoked_or_disabled_assigned_professional_loses_access(): void
     {
         $url = '/api/medical-files/appointments/301/prescription';
