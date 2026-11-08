@@ -21,8 +21,15 @@ foreach ([
     if (str_contains($body, "'payment_status' => 1")) {
         throw new RuntimeException($label.' improperly changes payment state');
     }
-    if (! str_contains($body, '&& (int) $appointment->payment_status === 1')) {
+    $paymentGate = $label === 'Doctor status'
+        ? '&& (int) $item->payment_status === 1'
+        : '&& (int) $appointment->payment_status === 1';
+    if (! str_contains($body, $paymentGate)) {
         throw new RuntimeException($label.' allows unverified gateway settlement');
+    }
+    if ($label === 'Doctor status' && (! str_contains($body, '->lockForUpdate()')
+        || ! str_contains($body, 'Settle::firstOrCreate('))) {
+        throw new RuntimeException('Doctor settlement transition is not serialized and idempotent');
     }
     if (! str_contains($body, "['appointment_status' =>")) {
         throw new RuntimeException($label.' no longer updates appointment status');
