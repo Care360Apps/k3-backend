@@ -56,6 +56,10 @@ class PrivatePrescriptionWriteTest extends TestCase
             );
             $this->assertSame(
                 '',
+                PrivatePrescriptionStorage::appointmentUrl(10, 'k3priv_not-a-valid-hex.pdf')
+            );
+            $this->assertSame(
+                '',
                 PrivatePrescriptionStorage::appointmentUrl(10, 'https://external.test/evil.pdf')
             );
         }
