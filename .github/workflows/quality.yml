@@ -89,3 +89,34 @@ jobs:
           if git ls-files | grep -E '(^|/)(\.env$|oauth-private\.key$|key\.properties$|.*\.(jks|keystore|p8|pem|sqlite|db)$|doctro\.sql$|firebase-service-account\.json$|.*service-account.*\.json$)'; then
             echo 'Restricted data or secrets included'; exit 1
           fi
+
+  laravel-synthetic-feature:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      APP_ENV: testing
+      APP_DEBUG: "false"
+      DB_CONNECTION: sqlite
+      DB_DATABASE: ":memory:"
+      CACHE_STORE: array
+      QUEUE_CONNECTION: sync
+      SESSION_DRIVER: array
+      MAIL_MAILER: array
+      K3_PRIVATE_PRESCRIPTION_WRITES: "false"
+      K3_SYNTHETIC_MEDICAL_MIGRATION: "true"
+      K3_WORKFORCE_PILOT_ENABLED: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, pdo_sqlite, xml, curl, openssl, fileinfo, zip
+          tools: composer:v2
+      - name: Install locked dependencies offline from the service's code
+        run: composer install --no-interaction --prefer-dist --no-progress
+      - name: Ephemeral test-only Laravel key
+        run: echo "APP_KEY=base64:$(php -r 'echo base64_encode(random_bytes(32));')" >> "$GITHUB_ENV"
+      - name: Test private prescription storage, ownership, rollback and isolated workforce
+        run: php artisan test --filter='(PrivatePrescriptionAccessTest|PrivatePrescriptionWriteTest|LegacyPrescriptionStagingTest|WorkforcePilotTest)' --stop-on-failure
