@@ -15,7 +15,9 @@ class PaymentApiController extends Controller
         try {
             $intent = $gateway->createStripePaymentIntent((float) $request->amount, auth()->id());
         } catch (ApiErrorException $e) {
-            info('Stripe payment intent failed: '.$e->getMessage());
+            // Stripe exception details may include sensitive provider context.
+            // Log a fixed event label, never raw upstream error bodies.
+            logger()->warning('Stripe payment intent creation failed.');
             throw ValidationException::withMessages(['stripe' => __('Stripe payment could not be started.')]);
         }
 
