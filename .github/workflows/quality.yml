@@ -33,6 +33,8 @@ jobs:
         run: php tools/test_payment_verification.php
       - name: No payment status forgery through appointment completion
         run: php tools/test_payment_completion_contract.php
+      - name: Atomic clinical settlement and cross-service receipt ownership
+        run: php tools/test_backend_security_continuation_contract.php
       - name: Private medical authorization and storage source contract
         run: php tools/test_private_medical_download_contract.php
       - name: Private prescription write cutoff source contract (opt-in)
