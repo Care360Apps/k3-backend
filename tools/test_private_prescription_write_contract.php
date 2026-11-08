@@ -60,9 +60,11 @@ $checks = [
         && substr_count($code['patient'], 'PrivatePrescriptionStorage::appointmentUrl') >= 2,
     'Patient missing prescriptions fail safely' =>
         str_contains($code['patient'], "'Prescription not found'"),
-    'Authenticated private download remains ownership restricted' =>
+    'Authenticated private download remains owner-scoped and excludes revoked clinicians' =>
         str_contains($code['download'], '$isPatient || $isAssignedProfessional')
         && str_contains($code['download'], 'where(\'user_id\', $appointment->user_id)')
+        && str_contains($code['download'], "->where('is_approved', 1)")
+        && str_contains($code['download'], "->where('status', 1)")
         && str_contains($code['routes'], "Route::middleware('auth:api')->group(function () {"),
 ];
 
