@@ -525,7 +525,9 @@ class UserApiController extends Controller
         ]);
         $data = $request->except(['appointment_status', 'admin_commission', 'doctor_commission', 'cancel_by', 'cancel_reason', 'discount_id', 'discount_price', 'is_from', 'scheduled_notification_id_doctor', 'scheduled_notification_id_patient']);
         $doctor = Doctor::findOrFail($data['doctor_id']);
-        if ((int) $doctor->status !== 1) {
+        if ((int) $doctor->status !== 1 || (int) $doctor->is_approved !== 1) {
+            // An unverified clinician or care provider may register but must
+            // not receive paid clinical bookings until independent approval.
             return response()->json(['success' => false, 'msg' => 'This professional is unavailable.'], 422);
         }
         $visitType = $data['visit_type'] ??
