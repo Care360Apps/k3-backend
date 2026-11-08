@@ -54,6 +54,15 @@ final class PrivatePrescriptionStorage
         }
 
         $root = storage_path('app');
+        $resolvedRoot = realpath($root);
+        $publicRoot = realpath(public_path());
+        // A misconfigured symlink must never turn "private" files into
+        // publicly served downloads, even if the file has a random name.
+        if ($resolvedRoot === false || $publicRoot === false
+            || $resolvedRoot === $publicRoot
+            || str_starts_with($resolvedRoot, $publicRoot.DIRECTORY_SEPARATOR)) {
+            throw new RuntimeException('Private storage root is not isolated.');
+        }
         $parent = $root;
         foreach (['private', 'medical', 'prescriptions'] as $part) {
             $path = $parent.DIRECTORY_SEPARATOR.$part;
