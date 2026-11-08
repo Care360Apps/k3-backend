@@ -49,6 +49,7 @@ $tests = [
     'test_medical_migration_contract.php',
     'test_backend_security_continuation_contract.php',
     'test_approved_professional_guard_contract.php',
+    'test_professional_firebase_gate_contract.php',
     'test_stripe_charge_binding_contract.php',
     'test_subscription_activation_contract.php',
     'test_pharmacy_commission.php',
