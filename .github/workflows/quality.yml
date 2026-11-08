@@ -35,6 +35,10 @@ jobs:
         run: php tools/test_payment_completion_contract.php
       - name: Atomic clinical settlement and cross-service receipt ownership
         run: php tools/test_backend_security_continuation_contract.php
+      - name: Professional route access and revocation safety
+        run: |
+          php -l app/Http/Middleware/EnsureApprovedProfessional.php
+          php tools/test_approved_professional_guard_contract.php
       - name: Private medical authorization and storage source contract
         run: php tools/test_private_medical_download_contract.php
       - name: Private prescription write cutoff source contract (opt-in)
@@ -122,4 +126,4 @@ jobs:
       - name: Ephemeral test-only Laravel key
         run: echo "APP_KEY=base64:$(php -r 'echo base64_encode(random_bytes(32));')" >> "$GITHUB_ENV"
       - name: Test private prescription storage, ownership, rollback and isolated workforce
-        run: php artisan test --filter='(PrivatePrescriptionAccessTest|PrivatePrescriptionWriteTest|LegacyPrescriptionStagingTest|WorkforcePilotTest)' --stop-on-failure
+        run: php artisan test --filter='(PrivatePrescriptionAccessTest|PrivatePrescriptionWriteTest|LegacyPrescriptionStagingTest|ApprovedProfessionalAccessTest|WorkforcePilotTest)' --stop-on-failure
