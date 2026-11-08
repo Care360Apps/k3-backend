@@ -942,7 +942,7 @@ class DoctorApiController extends Controller
             }
             return $created;
         });
-        if ($subscription->payment_type == 'FLUTTERWAVE') {
+        if ($subscription->payment_type == 'FLUTTERWAVE' && ! $paid) {
             return response(['success' => true, 'url' => url('subscription_flutter/'.$subscription->id)]);
         }
 
