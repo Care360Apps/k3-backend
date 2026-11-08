@@ -68,3 +68,16 @@ Required: PHP 8.3/8.4 syntax check of **every changed PHP file**, Laravel/PHPUni
 **CI blocker remains:** private repository Actions jobs are completing failed with no recorded steps. The connected GitHub interface exposes no usable logs for those jobs, so the cause is **not conclusively identified**. Prior independent public-builder execution was blocked by missing `CARE360_BACKEND_SOURCE_READ_TOKEN`; only a suitably authorized owner can provision the read-only secret. No PHP syntax/Composer/PHPUnit/MySQL result can be claimed from these runs.
 
 **Release effect:** #22 public medical documents, #23 Namecheap/credential rotation and #29 integrated security acceptance remain OPEN. Do not merge, migrate real records or ship either application until all medical, payment, OTP and device checks pass in controlled staging.
+
+## Partial local PHP runtime evidence — verified source blobs
+
+An isolated PHP 8.4 command-line environment syntax-checked **four exact files** from this draft branch. Their local `git hash-object` values matched the GitHub blob SHAs:
+
+| PHP file | Git blob SHA | Local `php -l` |
+|---|---|---|
+| `app/Http/Middleware/EnsureApprovedProfessional.php` | `603b95d79422c221c85f0c1d4a6856ecd0586ce3` | PASS |
+| `tools/test_backend_security_continuation_contract.php` | `ef5dc0d9ef1a84207413e31b8c2190aafbd6b343` | PASS |
+| `tools/test_approved_professional_guard_contract.php` | `39602fadb0a90500f17bd4c367872931935c1c5f` | PASS |
+| `tools/run_backend_security_checks.php` | `97e9dbf73809e6197d961796908b4384a99666f7` | PASS |
+
+This is genuine syntax execution for those four files only. The other Laravel files and source-contract test bodies have **not** been linted locally as a complete checkout; Composer/Laravel integration, workflow payment fixtures and clinical/MySQL tests remain **UNVERIFIED**. GitHub Actions still reports both jobs failed before recording steps. The tool to run on an authorized complete developer checkout is `php tools/run_backend_security_checks.php` — read-only PHP lint and offline synthetic checks; it deliberately does not run database migrations or PHPUnit.
