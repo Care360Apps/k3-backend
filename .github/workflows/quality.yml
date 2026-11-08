@@ -33,8 +33,55 @@ jobs:
         run: php tools/test_payment_verification.php
       - name: No payment status forgery through appointment completion
         run: php tools/test_payment_completion_contract.php
+      - name: Atomic clinical settlement and cross-service receipt ownership
+        run: php tools/test_backend_security_continuation_contract.php
+      - name: Professional route access and revocation safety
+        run: |
+          php -l app/Http/Middleware/EnsureApprovedProfessional.php
+          php tools/test_approved_professional_guard_contract.php
+      - name: Pending provider and suspended doctor Firebase access gate
+        run: |
+          php -l app/Http/Controllers/ProviderApiController.php
+          php -l tools/test_professional_firebase_gate_contract.php
+          php tools/test_professional_firebase_gate_contract.php
       - name: Private medical authorization and storage source contract
-        run: php tools/test_private_medical_download_contract.php
+        run: |
+          php tools/test_private_medical_download_contract.php
+          php -l app/Http/Controllers/PatientMedicalFileController.php
+          php -l tools/test_clinical_suspension_and_private_provenance_contract.php
+          php tools/test_clinical_suspension_and_private_provenance_contract.php
+      - name: Private prescription write cutoff source contract (opt-in)
+        run: php tools/test_private_prescription_write_contract.php
+      - name: Private/legacy route runtime regression (no Laravel or database)
+        run: |
+          php -l tools/test_private_prescription_urls_runtime.php
+          php tools/test_private_prescription_urls_runtime.php
+      - name: Read-only runtime configuration preflight source guard
+        run: php tools/test_security_preflight_contract.php
+      - name: Reversible synthetic medical-file staging and payment safety gates
+        run: |
+          php -l app/Console/Commands/StageLegacyPrescriptions.php
+          php -l database/migrations/2026_11_08_060000_create_medical_prescription_migration_ledger.php
+          php -l tests/Feature/LegacyPrescriptionStagingTest.php
+          php tools/test_medical_migration_contract.php
+          php tools/test_stripe_charge_binding_contract.php
+          php tools/test_subscription_activation_contract.php
+      - name: Doctor web payment status, signed checkout and cross-app subscription ownership
+        run: |
+          php -l app/Services/SubscriptionCheckoutReference.php
+          php -l app/Http/Controllers/Doctor/DoctorSubscriptionController.php
+          php -l app/Http/Controllers/SuperAdmin/SubscriptionController.php
+          php -l tools/test_subscription_checkout_binding.php
+          php -l tools/test_web_subscription_payment_contract.php
+          php tools/test_subscription_checkout_binding.php
+          php tools/test_web_subscription_payment_contract.php
+      - name: Atomic receipt claims across appointments, lab, pharmacy and subscriptions
+        run: |
+          php -l app/Services/PaymentReceiptClaimService.php
+          php -l database/migrations/2026_11_08_070000_create_payment_receipt_claims.php
+          php -l tests/Feature/AtomicPaymentReceiptClaimTest.php
+          php -l tools/test_atomic_payment_receipts_contract.php
+          php tools/test_atomic_payment_receipts_contract.php
       - name: Provider approval and valid proximity discovery
         run: php tools/test_provider_discovery_contract.php
       - name: Opt-in Nearby Care shift and location privacy safety
@@ -74,3 +121,35 @@ jobs:
           if git ls-files | grep -E '(^|/)(\.env$|oauth-private\.key$|key\.properties$|.*\.(jks|keystore|p8|pem|sqlite|db)$|doctro\.sql$|firebase-service-account\.json$|.*service-account.*\.json$)'; then
             echo 'Restricted data or secrets included'; exit 1
           fi
+
+  laravel-synthetic-feature:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      APP_ENV: testing
+      APP_DEBUG: "false"
+      DB_CONNECTION: sqlite
+      DB_DATABASE: ":memory:"
+      CACHE_STORE: array
+      QUEUE_CONNECTION: sync
+      SESSION_DRIVER: array
+      MAIL_MAILER: array
+      K3_PRIVATE_PRESCRIPTION_WRITES: "false"
+      K3_ATOMIC_PAYMENT_RECEIPTS: "true"
+      K3_SYNTHETIC_MEDICAL_MIGRATION: "true"
+      K3_WORKFORCE_PILOT_ENABLED: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, pdo_sqlite, xml, curl, openssl, fileinfo, zip
+          tools: composer:v2
+      - name: Install locked dependencies offline from the service's code
+        run: composer install --no-interaction --prefer-dist --no-progress
+      - name: Ephemeral test-only Laravel key
+        run: echo "APP_KEY=base64:$(php -r 'echo base64_encode(random_bytes(32));')" >> "$GITHUB_ENV"
+      - name: Test private prescription storage, ownership, rollback and isolated workforce
+        run: php artisan test --filter='(PrivatePrescriptionAccessTest|PrivatePrescriptionWriteTest|LegacyPrescriptionStagingTest|ApprovedProfessionalAccessTest|AtomicPaymentReceiptClaimTest|WorkforcePilotTest)' --stop-on-failure

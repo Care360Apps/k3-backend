@@ -14,6 +14,8 @@ use App\Services\MedicineStockGuard;
 use App\Services\PharmacyCommission;
 use App\Services\OtpService;
 use App\Services\PaymentGatewayService;
+use App\Services\PaymentReceiptClaimService;
+use App\Services\PrivatePrescriptionStorage;
 use App\Models\Appointment;
 use App\Models\Banner;
 use App\Models\Blog;
@@ -524,7 +526,10 @@ class UserApiController extends Controller
         ]);
         $data = $request->except(['appointment_status', 'admin_commission', 'doctor_commission', 'cancel_by', 'cancel_reason', 'discount_id', 'discount_price', 'is_from', 'scheduled_notification_id_doctor', 'scheduled_notification_id_patient']);
         $doctor = Doctor::findOrFail($data['doctor_id']);
-        if ((int) $doctor->status !== 1) {
+        if ((int) $doctor->status !== 1 || (int) $doctor->is_approved !== 1
+            || ! User::whereKey($doctor->user_id)->where('status', 1)->exists()) {
+            // An unverified clinician or care provider may register but must
+            // not receive paid clinical bookings until independent approval.
             return response()->json(['success' => false, 'msg' => 'This professional is unavailable.'], 422);
         }
         $visitType = $data['visit_type'] ??
@@ -633,10 +638,19 @@ class UserApiController extends Controller
         // DB columns are NOT NULL; ensure we never pass null for provider bookings
         $data['illness_information'] = $data['illness_information'] ?? '';
         $data['drug_effect'] = $data['drug_effect'] ?? '';
-        $appointment = Appointment::create($data);
-        if ($offer) {
-            $offer->increment('use_count');
-        }
+        // Claim a verified receipt atomically with appointment creation. If a
+        // concurrent request wins the unique receipt index, the order and
+        // offer-use increment roll back together.
+        $appointment = DB::transaction(function () use ($data, $offer) {
+            $created = Appointment::create($data);
+            (new PaymentReceiptClaimService())->claim(
+                $data, 'appointment', (int) $created->id, (int) $created->user_id
+            );
+            if ($offer) {
+                $offer->increment('use_count');
+            }
+            return $created;
+        });
 
         $setting = Setting::first();
         // doctor booked appointment
@@ -673,7 +687,7 @@ class UserApiController extends Controller
                 Config::set('mail', $config);
                 Mail::to($doctor_user->email)->send(new SendMail($mail1, $notification_template1->subject));
             } catch (\Exception $e) {
-                info($e->getMessage());
+                logger()->warning('Appointment email delivery failed.');
             }
         }
 
@@ -687,7 +701,7 @@ class UserApiController extends Controller
                     'include_player_ids' => [$doctor_user->device_token],
                 ]);
             } catch (\Exception $e) {
-                info('OneSignal Error: '.$e->getMessage());
+                logger()->warning('Appointment push delivery failed.');
             }
         }
 
@@ -732,7 +746,7 @@ class UserApiController extends Controller
                 Config::set('mail', $config);
                 Mail::to(auth()->user()->email)->send(new SendMail($mail1, $notification_template->subject));
             } catch (\Exception $e) {
-                info($e->getMessage());
+                logger()->warning('Appointment email delivery failed.');
             }
         }
 
@@ -745,7 +759,7 @@ class UserApiController extends Controller
                     'include_player_ids' => [auth()->user()->device_token],
                 ]);
             } catch (\Exception $e) {
-                info('OneSignal Error: '.$e->getMessage());
+                logger()->warning('Appointment push delivery failed.');
             }
 
             (new CustomController)->scheduledReminderNotification($appointment->id);
@@ -805,8 +819,21 @@ class UserApiController extends Controller
             return response(['success' => false, 'msg' => 'Appointment not found'], 404);
         }
         $appointment->doctor = Doctor::with('treatment:id,name')->where('id', $appointment->doctor_id)->first(['id', 'name', 'image', 'treatment_id']);
-        $appointment->prescription = Prescription::where('appointment_id', $id)->first();
-        $appointment->prescription['pdfPath'] = url('prescription/upload/'.$appointment->prescription['pdf']);
+        $prescription = Prescription::where('appointment_id', $id)
+            ->where('user_id', auth()->id())->first();
+        if (! $prescription) {
+            return response(['success' => false, 'msg' => 'Prescription not found'], 404);
+        }
+        $prescription['pdfPath'] = PrivatePrescriptionStorage::appointmentUrl(
+            (int) $appointment->id, $prescription->pdf
+        );
+        // Private files must stay private even if the write feature flag
+        // is switched off during rollback. Legacy filenames remain untouched
+        // until their own audited migration completes.
+        if (PrivatePrescriptionStorage::isPrivateFilename($prescription->pdf)) {
+            $prescription->makeHidden(['pdf']);
+        }
+        $appointment->prescription = $prescription;
 
         return response(['success' => true, 'data' => $appointment, 'msg' => 'Doctor Prescription']);
     }
@@ -1000,19 +1027,24 @@ class UserApiController extends Controller
         $data = $this->resolvePayment($data, Report::class);
         unset($data['upload_report']);
 
-        $report = Report::create($data);
-
-        $com = $lab->commission * $data['amount'];
-        $admin_commission = $com / 100;
-        $lab_commission = $data['amount'] - $admin_commission;
-        $settle = [];
-        $settle['lab_id'] = $lab->id;
-        $settle['report_id'] = $report->id;
-        $settle['admin_amount'] = $admin_commission;
-        $settle['lab_amount'] = $lab_commission;
-        $settle['payment'] = $report->payment_status == 1 ? 1 : 0;
-        $settle['lab_status'] = 0;
-        LabSettle::create($settle);
+        $report = DB::transaction(function () use ($data, $lab) {
+            $created = Report::create($data);
+            (new PaymentReceiptClaimService())->claim(
+                $data, 'lab', (int) $created->id, (int) $created->user_id
+            );
+            $com = $lab->commission * $data['amount'];
+            $admin_commission = $com / 100;
+            $lab_commission = $data['amount'] - $admin_commission;
+            LabSettle::create([
+                'lab_id' => $lab->id,
+                'report_id' => $created->id,
+                'admin_amount' => $admin_commission,
+                'lab_amount' => $lab_commission,
+                'payment' => (int) $created->payment_status === 1 ? 1 : 0,
+                'lab_status' => 0,
+            ]);
+            return $created;
+        });
 
         return response(['success' => true, 'msg' => 'Lab booked', 'data' => $report]);
     }
@@ -1082,6 +1114,9 @@ class UserApiController extends Controller
 
         DB::transaction(function () use ($data, $order) {
             $purchase = PurchaseMedicine::create($data);
+            (new PaymentReceiptClaimService())->claim(
+                $data, 'medicine', (int) $purchase->id, (int) $purchase->user_id
+            );
             foreach ($order['lines'] as $line) {
                 MedicineChild::create([
                     'purchase_medicine_id' => $purchase->id,
@@ -1141,7 +1176,9 @@ class UserApiController extends Controller
         $appointment['pdf'] = '';
         if (Prescription::where('appointment_id', $id)->exists()) {
             $pdf = Prescription::where('appointment_id', $id)->first()->pdf;
-            $appointment['pdf'] = url('prescription/upload').'/'.$pdf;
+            $appointment['pdf'] = PrivatePrescriptionStorage::appointmentUrl(
+                (int) $appointment->id, $pdf
+            );
         }
 
         return response(['success' => true, 'data' => $appointment, 'msg' => 'Appointment details']);
@@ -1150,35 +1187,55 @@ class UserApiController extends Controller
     public function apiCompleteAppointment(Request $request)
     {
         (new CustomController)->cancel_max_order();
-        $request->validate([
-            'appointment_id' => 'bail|required|integer',
+        $validated = $request->validate([
+            'appointment_id' => 'bail|required|integer|min:1',
         ]);
-        $appointment = Appointment::where('id', $request->appointment_id)->where('user_id', auth()->user()->id)->first();
-        if (! $appointment) {
+        // Patient and professional close endpoints must serialize on the same
+        // appointment row to prevent concurrent double settlement.
+        $result = DB::transaction(function () use ($validated) {
+            $appointment = Appointment::where('id', $validated['appointment_id'])
+                ->where('user_id', auth()->id())->lockForUpdate()->first();
+            if (! $appointment) {
+                return null;
+            }
+            if (in_array(strtolower((string) $appointment->appointment_status),
+                ['complete', 'completed', 'cancel', 'canceled', 'cancelled'], true)) {
+                return false;
+            }
+            $appointment->update(['appointment_status' => 'complete']);
+            $doctor = Doctor::find($appointment->doctor_id);
+            if ($doctor && $doctor->based_on === 'commission') {
+                // A patient completing an appointment does NOT prove payment:
+                // only gateway verification may set the paid settlement flag.
+                Settle::firstOrCreate(
+                    ['appointment_id' => $appointment->id],
+                    [
+                        'doctor_id' => $appointment->doctor_id,
+                        'doctor_amount' => $appointment->doctor_commission,
+                        'admin_amount' => $appointment->admin_commission,
+                        'payment' => $appointment->payment_type !== 'COD'
+                            && (int) $appointment->payment_status === 1 ? 1 : 0,
+                        'doctor_status' => 0,
+                    ]
+                );
+            }
+            return $appointment;
+        });
+        if ($result === null) {
             return response(['success' => false, 'msg' => 'Appointment not found'], 404);
         }
-        if (in_array(strtolower($appointment->appointment_status ?? ''), ['complete', 'completed', 'cancel'])) {
+        if ($result === false) {
             return response(['success' => false, 'msg' => 'Appointment already closed'], 422);
         }
-        // Completing a consultation is NOT evidence that money was received.
-        // PaymentGatewayService alone may confirm a paid transaction.
-        $appointment->update(['appointment_status' => 'complete']);
-        $user = User::find($appointment->user_id);
-        $doctor = Doctor::find($appointment->doctor_id);
-        if ($doctor && $doctor->based_on == 'commission') {
-            $settle = [];
-            $settle['appointment_id'] = $appointment->id;
-            $settle['doctor_id'] = $appointment->doctor_id;
-            $settle['doctor_amount'] = $appointment->doctor_commission;
-            $settle['admin_amount'] = $appointment->admin_commission;
-            // Never mark a settlement paid merely because a non-COD gateway
-            // was selected. The underlying payment must already be verified.
-            $settle['payment'] = $appointment->payment_type !== 'COD'
-                && (int) $appointment->payment_status === 1 ? 1 : 0;
-            $settle['doctor_status'] = 0;
-            Settle::create($settle);
+        try {
+            (new CustomController)->statusChangeNotification(
+                User::find($result->user_id), $result, 'complete'
+            );
+        } catch (\Throwable $error) {
+            // Do not leak patient details or roll back a committed clinical
+            // transition just because a third-party push provider is down.
+            logger()->warning('Patient appointment completion notification failed.');
         }
-        (new CustomController)->statusChangeNotification($user, $appointment, 'complete');
 
         return response(['success' => true, 'msg' => 'Appointment completed']);
     }

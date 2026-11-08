@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Appointment;
 use App\Models\Doctor;
 use App\Models\Prescription;
+use App\Services\PrivatePrescriptionStorage;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
@@ -28,9 +29,19 @@ class PatientMedicalFileController extends Controller
 
         $isPatient = (int) $appointment->user_id === (int) $user->id;
         // An assigned doctor/provider has access to this appointment only.
-        $isAssignedProfessional = ! $isPatient && Doctor::query()
+        $isAssignedProfessional = ! $isPatient && (int) $user->status === 1
+            && $user->hasRole('doctor') && Doctor::query()
             ->where('user_id', $user->id)
             ->whereKey($appointment->doctor_id)
+            // Disabled or approval-revoked clinical accounts must lose access
+            // even to appointments that were assigned while approved.
+            ->where('is_approved', 1)
+            ->where('status', 1)
+            ->where(function ($query) {
+                // Older approved doctor records may not have a populated
+                // role column. Explicit provider profiles are not prescribers.
+                $query->whereNull('user_role')->orWhere('user_role', '!=', 'provider');
+            })
             ->exists();
         abort_unless($isPatient || $isAssignedProfessional, 404);
 
@@ -43,7 +54,7 @@ class PatientMedicalFileController extends Controller
         // Restrict names to server-generated PDFs; never accept request paths,
         // user-provided filenames, traversal sequences or arbitrary extensions.
         abort_unless(
-            preg_match('/\A[a-zA-Z0-9_-]{16,80}\.pdf\z/D', $name) === 1,
+            PrivatePrescriptionStorage::isPrivateFilename($name),
             404
         );
 
@@ -57,6 +68,8 @@ class PatientMedicalFileController extends Controller
             404
         );
 
+        // Never follow an administrative URL or a public-file fallback.
+        // No signed query-token is accepted: revocation takes effect at the next request.
         return response()->download($full, 'care360-prescription.pdf', [
             'Content-Type' => 'application/pdf',
             'Cache-Control' => 'private, no-store, max-age=0',
