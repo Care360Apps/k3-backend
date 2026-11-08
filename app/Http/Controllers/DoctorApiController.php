@@ -936,28 +936,38 @@ class DoctorApiController extends Controller
     public function apiPaystackInit(Request $request)
     {
         $request->validate([
-            'amount' => 'bail|required|numeric|min:1',
+            'amount' => 'bail|required|numeric|min:1|max:10000000',
             'email' => 'bail|required|email',
-            'currency' => 'bail|required|string',
+            'currency' => 'bail|required|string|max:3',
         ]);
-
         $secretKey = config('services.paystack.secret');
         if (! $secretKey) {
-            return response(['success' => false, 'msg' => 'Paystack secret key is not configured'], 500);
+            return response(['success' => false, 'msg' => 'Payment gateway unavailable'], 503);
         }
 
-        $response = Http::withToken($secretKey)->post('https://api.paystack.co/transaction/initialize', [
-            'email' => $request->email,
-            'amount' => $request->amount,
-            'currency' => $request->currency,
-        ]);
-
+        $currency = strtoupper((string) Setting::query()->value('currency_code'));
+        if ($currency === '' || strtoupper((string) $request->currency) !== $currency) {
+            return response(['success' => false, 'msg' => 'Unsupported payment currency'], 422);
+        }
+        $payer = $request->user('api');
+        if (! $payer || ! $payer->email) {
+            return response(['success' => false, 'msg' => 'Account verification required'], 403);
+        }
+        // Paystack accepts minor currency units. The payer identity and
+        // metadata must be server-derived, never client-controlled.
+        $amountMinor = (int) round(((float) $request->amount) * 100);
+        $response = Http::withToken($secretKey)
+            ->post('https://api.paystack.co/transaction/initialize', [
+                'email' => $payer->email,
+                'amount' => $amountMinor,
+                'currency' => $currency,
+                'metadata' => ['user_id' => (string) $payer->id],
+            ]);
         if (! $response->successful()) {
-            return response(['success' => false, 'msg' => 'Paystack initialization failed', 'data' => $response->json()], 500);
+            return response(['success' => false, 'msg' => 'Paystack initialization failed'], 502);
         }
 
         $data = $response->json('data');
-
         return response([
             'success' => true,
             'data' => [
