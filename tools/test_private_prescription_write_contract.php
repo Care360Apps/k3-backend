@@ -39,6 +39,7 @@ $checks = [
     'Document provenance is checked independently of the rollout flag' =>
         str_contains($code['service'], 'public static function isPrivateFilename(')
         && str_contains($code['service'], 'if (self::isPrivateFilename($filename))')
+        && str_contains($code['service'], 'str_starts_with($filename, \'k3priv_\')')
         && ! str_contains($code['service'], 'return self::enabled()')
         && str_contains($code['patient'], 'PrivatePrescriptionStorage::isPrivateFilename($prescription->pdf)'),
     'Private directory rejects symlinks and file is owner-only' =>
