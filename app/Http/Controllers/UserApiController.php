@@ -676,7 +676,7 @@ class UserApiController extends Controller
                 Config::set('mail', $config);
                 Mail::to($doctor_user->email)->send(new SendMail($mail1, $notification_template1->subject));
             } catch (\Exception $e) {
-                info($e->getMessage());
+                logger()->warning('Appointment email delivery failed.');
             }
         }
 
@@ -690,7 +690,7 @@ class UserApiController extends Controller
                     'include_player_ids' => [$doctor_user->device_token],
                 ]);
             } catch (\Exception $e) {
-                info('OneSignal Error: '.$e->getMessage());
+                logger()->warning('Appointment push delivery failed.');
             }
         }
 
@@ -735,7 +735,7 @@ class UserApiController extends Controller
                 Config::set('mail', $config);
                 Mail::to(auth()->user()->email)->send(new SendMail($mail1, $notification_template->subject));
             } catch (\Exception $e) {
-                info($e->getMessage());
+                logger()->warning('Appointment email delivery failed.');
             }
         }
 
@@ -748,7 +748,7 @@ class UserApiController extends Controller
                     'include_player_ids' => [auth()->user()->device_token],
                 ]);
             } catch (\Exception $e) {
-                info('OneSignal Error: '.$e->getMessage());
+                logger()->warning('Appointment push delivery failed.');
             }
 
             (new CustomController)->scheduledReminderNotification($appointment->id);
