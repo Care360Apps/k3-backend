@@ -50,6 +50,7 @@ jobs:
           php -l tests/Feature/LegacyPrescriptionStagingTest.php
           php tools/test_medical_migration_contract.php
           php tools/test_stripe_charge_binding_contract.php
+          php tools/test_subscription_activation_contract.php
       - name: Provider approval and valid proximity discovery
         run: php tools/test_provider_discovery_contract.php
       - name: Opt-in Nearby Care shift and location privacy safety
