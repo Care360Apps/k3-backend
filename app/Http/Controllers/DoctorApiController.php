@@ -873,19 +873,25 @@ class DoctorApiController extends Controller
         $data = $request->only(['subscription_id', 'duration', 'payment_type', 'payment_token', 'payment_status']);
         $data['amount'] = (float) $plan['price'];
         $data = (new PaymentGatewayService)->resolve($data, DoctorSubscription::class, auth()->id());
-        DoctorSubscription::where([['status', 1], ['doctor_id', $doctor->id]])->update(['status' => 0]);
+        $paid = (int) ($data['payment_status'] ?? 0) === 1;
         $data['doctor_id'] = $doctor->id;
         $data['start_date'] = Carbon::now(env('timezone'))->format('Y-m-d');
         $data['end_date'] = Carbon::now(env('timezone'))->addMonths($data['duration'])->format('Y-m-d');
-        $data['status'] = 1;
-        $subscription = DoctorSubscription::create($data);
-        if ($subscription->payment_status == 1) {
-            $doctor->subscription_status = 1;
-            $doctor->save();
-        } else {
-            $doctor->subscription_status = 0;
-            $doctor->save();
-        }
+        // An unpaid request must never become the active subscription or
+        // deactivate a previously verified/paid plan.
+        $data['status'] = $paid ? 1 : 0;
+        $subscription = \Illuminate\Support\Facades\DB::transaction(function () use ($doctor, $data, $paid) {
+            if ($paid) {
+                DoctorSubscription::where([['status', 1], ['doctor_id', $doctor->id]])
+                    ->update(['status' => 0]);
+            }
+            $created = DoctorSubscription::create($data);
+            if ($paid) {
+                $doctor->subscription_status = 1;
+                $doctor->save();
+            }
+            return $created;
+        });
         if ($subscription->payment_type == 'FLUTTERWAVE') {
             return response(['success' => true, 'url' => url('subscription_flutter/'.$subscription->id)]);
         }
