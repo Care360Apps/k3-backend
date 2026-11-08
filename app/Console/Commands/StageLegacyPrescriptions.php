@@ -51,6 +51,17 @@ class StageLegacyPrescriptions extends Command
             return self::FAILURE;
         }
 
+        // A mislabeled APP_ENV alone must never authorize modification of a
+        // real patient database. The database itself must be clearly synthetic.
+        if ($apply) {
+            $databaseName = (string) DB::connection()->getDatabaseName();
+            if ($databaseName !== ':memory:'
+                && ! str_contains(strtolower(basename($databaseName)), 'synthetic')) {
+                $this->error('Writes require a dedicated synthetic-named database.');
+                return self::FAILURE;
+            }
+        }
+
         $query = $rollback
             ? DB::table('medical_prescription_migrations')->where('state', 'staged')
             : DB::table('prescription')->whereNotNull('pdf')->where('pdf', '!=', '')
