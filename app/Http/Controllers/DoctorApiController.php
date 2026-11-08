@@ -344,14 +344,15 @@ class DoctorApiController extends Controller
         $prescriber = Doctor::where('user_id', auth()->id())->first();
         if (! $prescriber || $prescriber->user_role === 'provider'
             || ! auth()->user()->hasRole('doctor')
-            || (int) $prescriber->is_approved !== 1) {
+            || (int) $prescriber->is_approved !== 1
+            || (int) $prescriber->status !== 1) {
             return response()->json(['success' => false,
                 'msg' => 'Prescription access requires an approved doctor account.'], 403);
         }
         $request->validate([
             'appointment_id' => 'bail|required',
-            'medicines' => 'bail|required',
-            'user_id' => 'bail|required',
+            'medicines' => 'bail|required|json',
+            'user_id' => 'bail|required|integer',
             'pdf' => 'bail|nullable|file|mimes:pdf|max:10240'
         ]);
         $data = $request->all();
@@ -360,14 +361,33 @@ class DoctorApiController extends Controller
             return response(['success' => false, 'msg' => 'Appointment not found'], 404);
         }
         $data['user_id'] = $ownAppointment->user_id;
+        $decoded = json_decode($data['medicines'], true);
+        if (! is_array($decoded) || ! array_is_list($decoded) || count($decoded) < 1 || count($decoded) > 50) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'medicines' => 'A list of 1 to 50 medicines is required.',
+            ]);
+        }
         $medicine = [];
-        foreach (json_decode($data['medicines']) as $tempMedicine) {
-            $temp['medicine'] = $tempMedicine->medicine;
-            $temp['days'] = $tempMedicine->days;
-            $temp['morning'] = $tempMedicine->morning;
-            $temp['afternoon'] = $tempMedicine->afternoon;
-            $temp['night'] = $tempMedicine->night;
-            array_push($medicine, $temp);
+        foreach ($decoded as $entry) {
+            if (! is_array($entry) || ! isset($entry['medicine'])
+                || ! is_scalar($entry['medicine'])
+                || strlen((string) $entry['medicine']) > 200
+                || trim((string) $entry['medicine']) === '') {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'medicines' => 'Invalid medicine details.',
+                ]);
+            }
+            $item = ['medicine' => trim((string) $entry['medicine'])];
+            foreach (['days', 'morning', 'afternoon', 'night'] as $field) {
+                $value = $entry[$field] ?? null;
+                if (! is_scalar($value) && $value !== null) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'medicines' => 'Invalid medicine schedule.',
+                    ]);
+                }
+                $item[$field] = $value;
+            }
+            $medicine[] = $item;
         }
         $pre['medicines'] = json_encode($medicine);
         $pre['appointment_id'] = $data['appointment_id'];
