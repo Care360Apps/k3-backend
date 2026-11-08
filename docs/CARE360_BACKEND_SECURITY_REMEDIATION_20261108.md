@@ -52,3 +52,19 @@ Required: PHP 8.3/8.4 syntax check of **every changed PHP file**, Laravel/PHPUni
 ## GO / NO-GO
 
 **NO-GO.** Do not merge stacked PRs, turn on private writes/Workforce, deploy Namecheap, seed real users, or export a Play handover as release-certified. Security clearance requires H1/H2 evidence, M2 migration/old URL cutoff, payment reconciliation, client builds and independent staging retest signed by clinical/security/release owners.
+
+## Additional security execution — clinical and payment boundaries (8 Nov 2026)
+
+**New committed source after the initial matrix:**
+- Patient and Doctor completion now serialize on the same appointment row with a database transaction and `lockForUpdate()`; both use `Settle::firstOrCreate` and preserve the rule that completion alone cannot set paid. Notification service errors no longer rollback committed clinical state.
+- Patient booking explicitly rejects `status != 1` **or** `is_approved != 1` for doctor/provider profiles. This is a deliberate approval-state behavior change for pending clinicians.
+- `EnsureApprovedProfessional` middleware requires a current active, approved professional and a matching doctor/provider role. Applied to 20 sensitive professional route entries: clinical appointment/notes/prescribing, history, status mutation, teleconsultation initiation and finance/payout/notifications. Registration and verification profile updates remain usable. Approved legacy doctor rows with NULL `user_role` require current explicit doctor account role.
+- `PaymentGatewayService` checks previously-used receipt references in four current tables (appointment, purchase_medicine, report, doctor_subscription). **Sequential** cross-service replay is rejected, but this does not solve simultaneous attempts without an atomic unique receipt ledger.
+- Paystack verification now checks the authenticated `metadata.user_id`. Doctor/Plus Paystack initialization derives server user/email/currency, sends 100x minor units and stamps server-side `metadata.user_id`. The client `email` field is ignored for payer identity. All Paystack flows must be retested for two-decimal currency support and missing legacy metadata.
+- PayPal Orders v2 verification requires every purchase-unit `custom_id` to match the authenticated account, alongside completed captures, correct currency and amount. **A client-authored `custom_id` is not sufficient proof of payment ownership**: server-created checkout ownership and a persistent unique payment-claim ledger remain mandatory before financial acceptance. Legacy unbound Orders v2 must fail closed.
+- Removed raw SMTP and OneSignal exception messages from Patient booking notification logs.
+- Added synthetic payment gateway harness cases for correct/incorrect Paystack and PayPal identity, and cross-product reuse; synthetic clinician guard test and offline structural checks added to the draft workflow.
+
+**CI blocker remains:** private repository Actions jobs are completing failed with no recorded steps. The connected GitHub interface exposes no usable logs for those jobs, so the cause is **not conclusively identified**. Prior independent public-builder execution was blocked by missing `CARE360_BACKEND_SOURCE_READ_TOKEN`; only a suitably authorized owner can provision the read-only secret. No PHP syntax/Composer/PHPUnit/MySQL result can be claimed from these runs.
+
+**Release effect:** #22 public medical documents, #23 Namecheap/credential rotation and #29 integrated security acceptance remain OPEN. Do not merge, migrate real records or ship either application until all medical, payment, OTP and device checks pass in controlled staging.
