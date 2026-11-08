@@ -27,6 +27,7 @@ use App\Services\FirebaseTokenService;
 use App\Services\DoctorDocumentService;
 use App\Services\PrivatePrescriptionStorage;
 use App\Services\PaymentGatewayService;
+use App\Services\PaymentReceiptClaimService;
 use Berkayk\OneSignal\OneSignalClient;
 use Carbon\Carbon;
 use DateTime;
@@ -930,6 +931,9 @@ class DoctorApiController extends Controller
                     ->update(['status' => 0]);
             }
             $created = DoctorSubscription::create($data);
+            (new PaymentReceiptClaimService())->claim(
+                $data, 'subscription', (int) $created->id, (int) $doctor->user_id
+            );
             if ($paid) {
                 $doctor->subscription_status = 1;
                 $doctor->save();
