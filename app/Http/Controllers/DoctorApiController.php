@@ -564,44 +564,72 @@ class DoctorApiController extends Controller
     public function apiStatusChange(Request $request)
     {
         (new CustomController)->cancel_max_order();
-        $request->validate([
-            'id' => 'required',
+        $validated = $request->validate([
+            'id' => 'required|integer|min:1',
             'status' => 'required|in:approve,cancel,complete',
         ]);
-        $activeProfessional = Doctor::where('user_id', auth()->id())
+        $professional = Doctor::where('user_id', auth()->id())
             ->where('is_approved', 1)->where('status', 1)->first();
-        if (! $activeProfessional) {
+        if (! $professional) {
             return response(['success' => false, 'msg' => 'Professional approval required'], 403);
         }
-        $appointment = Appointment::where('id', $request->id)
-            ->where('doctor_id', $activeProfessional->id)->first();
-        if (! $appointment) {
+
+        // Lock the appointment through the close/settlement transition. Without
+        // this, two requests can both observe "open" and create duplicate
+        // settlement rows for a single clinical encounter.
+        $appointment = \Illuminate\Support\Facades\DB::transaction(
+            function () use ($validated, $professional) {
+                $item = Appointment::where('id', $validated['id'])
+                    ->where('doctor_id', $professional->id)
+                    ->lockForUpdate()->first();
+                if (! $item) {
+                    return null;
+                }
+                if (in_array(strtolower((string) $item->appointment_status),
+                    ['complete', 'completed', 'cancel', 'canceled'], true)) {
+                    return false;
+                }
+
+                $item->update(['appointment_status' => $validated['status']]);
+                if ($validated['status'] === 'complete' && $professional->based_on === 'commission') {
+                    Settle::firstOrCreate(
+                        ['appointment_id' => $item->id],
+                        [
+                            'doctor_id' => $item->doctor_id,
+                            'doctor_amount' => $item->doctor_commission,
+                            'admin_amount' => $item->admin_commission,
+                            'payment' => $item->payment_type !== 'COD'
+                                && (int) $item->payment_status === 1 ? 1 : 0,
+                            'doctor_status' => 0,
+                        ]
+                    );
+                }
+
+                return $item;
+            }
+        );
+        if ($appointment === null) {
             return response(['success' => false, 'msg' => 'Appointment not found'], 404);
         }
-        if (in_array(strtolower((string) $appointment->appointment_status), ['complete', 'completed', 'cancel', 'canceled'], true)) {
+        if ($appointment === false) {
             return response(['success' => false, 'msg' => 'Appointment already closed'], 422);
         }
-        // Care completion/approval does not verify payment; keep payment_status
-        // controlled only by the gateway/payment-confirmation flow.
-        $appointment->update(['appointment_status' => $request->status]);
-        $user = User::find($appointment->user_id);
-        $doctor = Doctor::find($appointment->doctor_id);
-        if ($request->status == 'complete') {
-            if ($doctor->based_on == 'commission') {
-                $settle = [];
-                $settle['appointment_id'] = $appointment->id;
-                $settle['doctor_id'] = $appointment->doctor_id;
-                $settle['doctor_amount'] = $appointment->doctor_commission;
-                $settle['admin_amount'] = $appointment->admin_commission;
-                $settle['payment'] = $appointment->payment_type !== 'COD'
-                    && (int) $appointment->payment_status === 1 ? 1 : 0;
-                $settle['doctor_status'] = 0;
-                Settle::create($settle);
+
+        try {
+            $patient = User::find($appointment->user_id);
+            (new CustomController)->statusChangeNotification(
+                $patient, $appointment, $validated['status']
+            );
+            if ($validated['status'] === 'cancel') {
+                (new CustomController)->cancelScheduledNotification(
+                    $appointment->scheduled_notification_id_patient,
+                    $appointment->scheduled_notification_id_doctor
+                );
             }
-        }
-        (new CustomController)->statusChangeNotification($user, $appointment, $request->status);
-        if ($request->status == 'cancel') {
-            (new CustomController)->cancelScheduledNotification($appointment->scheduled_notification_id_patient, $appointment->scheduled_notification_id_doctor);
+        } catch (\Throwable $error) {
+            // An unavailable push service must not reverse a committed
+            // appointment state or leak patient/provider payloads to logs.
+            logger()->warning('Appointment status notification delivery failed.');
         }
 
         return response(['success' => true, 'msg' => 'appointment status change']);
