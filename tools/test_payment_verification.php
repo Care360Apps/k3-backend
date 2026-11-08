@@ -144,6 +144,35 @@ namespace {
     unset(Http::$payload['transactions'][0]['amount']['currency']);
     checkCase('PayPal v1 missing currency rejected', 'PAYPAL', 'PAYID-1', false);
 
+    Http::$payload = ['data'=>[
+        'id'=>'paystack-test', 'status'=>'success', 'currency'=>'NGN',
+        'amount'=>10000, 'metadata'=>['user_id'=>'7'],
+    ]];
+    checkCase('Paystack verified owner and paid amount accepted', 'PAYSTACK', 'paystack-test', true);
+    Http::$payload['data']['metadata']['user_id'] = '99';
+    checkCase('Paystack receipt for different owner rejected', 'PAYSTACK', 'paystack-test', false);
+    unset(Http::$payload['data']['metadata']['user_id']);
+    checkCase('Unbound Paystack receipt rejected', 'PAYSTACK', 'paystack-test', false);
+    Http::$payload['data']['metadata']['user_id'] = '7';
+    Http::$payload['data']['amount'] = 9900;
+    checkCase('Underpaid Paystack receipt rejected', 'PAYSTACK', 'paystack-test', false);
+
+    Http::$payload = [
+        'id' => 'ORDER-1', 'status'=>'COMPLETED',
+        'purchase_units' => [[
+            'custom_id' => '7',
+            'payments' => ['captures'=>[[
+                'status'=>'COMPLETED',
+                'amount'=>['currency_code'=>'NGN','value'=>'100.00'],
+            ]]],
+        ]],
+    ];
+    checkCase('PayPal v2 completed and account-bound receipt accepted', 'PAYPAL', 'ORDER-1', true);
+    Http::$payload['purchase_units'][0]['custom_id'] = '101';
+    checkCase('PayPal v2 mismatched owner is rejected', 'PAYPAL', 'ORDER-1', false);
+    unset(Http::$payload['purchase_units'][0]['custom_id']);
+    checkCase('PayPal v2 unbound order rejected', 'PAYPAL', 'ORDER-1', false);
+
     Http::$payload = ['status'=>'authorized','currency'=>'NGN','amount'=>10000];
     checkCase('Razorpay authorization alone is unpaid', 'RAZORPAY', 'pay_1', false);
     Http::$payload['status'] = 'captured';
