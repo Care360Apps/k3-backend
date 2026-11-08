@@ -35,7 +35,11 @@ class PatientMedicalFileController extends Controller
             // even to appointments that were assigned while approved.
             ->where('is_approved', 1)
             ->where('status', 1)
-            ->where('user_role', '!=', 'provider')
+            ->where(function ($query) {
+                // Older approved doctor records may not have a populated
+                // role column. Explicit provider profiles are not prescribers.
+                $query->whereNull('user_role')->orWhere('user_role', '!=', 'provider');
+            })
             ->exists();
         abort_unless($isPatient || $isAssignedProfessional, 404);
 
