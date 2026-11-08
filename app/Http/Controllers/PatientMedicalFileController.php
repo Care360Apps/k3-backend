@@ -28,7 +28,8 @@ class PatientMedicalFileController extends Controller
 
         $isPatient = (int) $appointment->user_id === (int) $user->id;
         // An assigned doctor/provider has access to this appointment only.
-        $isAssignedProfessional = ! $isPatient && $user->hasRole('doctor') && Doctor::query()
+        $isAssignedProfessional = ! $isPatient && (int) $user->status === 1
+            && $user->hasRole('doctor') && Doctor::query()
             ->where('user_id', $user->id)
             ->whereKey($appointment->doctor_id)
             // Disabled or approval-revoked clinical accounts must lose access
