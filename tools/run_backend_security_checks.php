@@ -51,6 +51,7 @@ $tests = [
     'test_approved_professional_guard_contract.php',
     'test_professional_firebase_gate_contract.php',
     'test_atomic_payment_receipts_contract.php',
+    'test_clinical_suspension_and_private_provenance_contract.php',
     'test_subscription_checkout_binding.php',
     'test_web_subscription_payment_contract.php',
     'test_stripe_charge_binding_contract.php',
