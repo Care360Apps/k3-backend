@@ -335,6 +335,12 @@ class DoctorApiController extends Controller
         $professional = Doctor::query()->whereKey($doctorId)
             ->where('user_id', auth()->id())->where('is_approved', 1)
             ->where('status', 1)->first();
+        // This shared endpoint is reachable without the professional
+        // middleware. Suspend clinical-record access with the underlying
+        // user account, even when an old Passport token is still valid.
+        if ((int) (auth()->user()->status ?? 0) !== 1) {
+            return response(['success' => false, 'msg' => 'Appointment not found'], 404);
+        }
         if (! $professional) {
             return response(['success' => false, 'msg' => 'Appointment not found'], 404);
         }
