@@ -104,7 +104,7 @@ class PaymentGatewayService
         $verify = match ($type) {
             'STRIPE' => fn () => $this->verifyStripe($token, $amount, $userId),
             'PAYPAL' => fn () => $this->verifyPaypal($token, $amount, $userId),
-            'PAYSTACK' => config('services.paystack.secret') ? fn () => $this->verifyPaystack($token, $amount) : null,
+            'PAYSTACK' => config('services.paystack.secret') ? fn () => $this->verifyPaystack($token, $amount, $userId) : null,
             'FLUTTERWAVE' => config('services.flutterwave.secret') ? fn () => $this->verifyFlutterwave($token, $amount) : null,
             'RAZORPAY' => config('services.razorpay.secret') ? fn () => $this->verifyRazorpay($token, $amount) : null,
         };
@@ -204,7 +204,7 @@ class PaymentGatewayService
     {
         // The web panels use the PayPal JS SDK, which returns Orders v2 ids; the apps use v1 PAYID-... payments.
         if (! str_starts_with($paymentId, 'PAYID-')) {
-            return $this->verifyPaypalOrder($paymentId, $amount);
+            return $this->verifyPaypalOrder($paymentId, $amount, $userId);
         }
         if (Cache::get($this->paypalOwnerKey($paymentId)) != $userId) {
             $this->fail();
@@ -223,17 +223,32 @@ class PaymentGatewayService
         return $payment['id'];
     }
 
-    private function verifyPaypalOrder(string $orderId, float $amount): string
+    private function verifyPaypalOrder(string $orderId, float $amount, int $userId): string
     {
         $order = Http::withToken($this->paypalAccessToken())
             ->get($this->paypalBaseUrl().'/v2/checkout/orders/'.rawurlencode($orderId))
             ->throw()
             ->json();
-        $captured = collect($order['purchase_units'] ?? [])
-            ->flatMap(fn ($unit) => data_get($unit, 'payments.captures', []))
-            ->where('status', 'COMPLETED')
-            ->filter(fn ($capture) => strtoupper((string) data_get($capture, 'amount.currency_code')) === strtoupper((string) $this->setting->currency_code))
-            ->sum(fn ($capture) => (float) data_get($capture, 'amount.value', 0));
+        $units = $order['purchase_units'] ?? null;
+        if (! is_array($units) || $units === []) {
+            $this->fail();
+        }
+        $captured = 0.0;
+        foreach ($units as $unit) {
+            // A gateway-successful order does not prove it belongs to this
+            // Care360 user. The integrator must set custom_id from the
+            // authenticated server-created checkout, not from untrusted UI.
+            if (! is_array($unit)
+                || (string) ($unit['custom_id'] ?? '') !== (string) $userId) {
+                $this->fail();
+            }
+            foreach ((array) data_get($unit, 'payments.captures', []) as $capture) {
+                if (($capture['status'] ?? null) === 'COMPLETED'
+                    && $this->sameCurrency(data_get($capture, 'amount.currency_code'))) {
+                    $captured += (float) data_get($capture, 'amount.value', 0);
+                }
+            }
+        }
         if (($order['status'] ?? null) !== 'COMPLETED' || $captured + 0.001 < $amount) {
             $this->fail();
         }
@@ -241,7 +256,7 @@ class PaymentGatewayService
         return $order['id'];
     }
 
-    private function verifyPaystack(string $reference, float $amount): string
+    private function verifyPaystack(string $reference, float $amount, int $userId): string
     {
         $data = Http::withToken(config('services.paystack.secret'))
             ->get('https://api.paystack.co/transaction/verify/'.rawurlencode($reference))
@@ -249,7 +264,8 @@ class PaymentGatewayService
             ->json('data');
         if (($data['status'] ?? null) !== 'success'
             || ! $this->sameCurrency($data['currency'] ?? null)
-            || (int) ($data['amount'] ?? 0) < $this->toMinorUnits($amount)) {
+            || (int) ($data['amount'] ?? 0) < $this->toMinorUnits($amount)
+            || (string) data_get($data, 'metadata.user_id', '') !== (string) $userId) {
             $this->fail();
         }
 
