@@ -37,6 +37,7 @@ class PrivatePrescriptionAccessTest extends TestCase
             $table->unsignedBigInteger('user_id');
             $table->unsignedTinyInteger('is_approved')->default(0);
             $table->unsignedTinyInteger('status')->default(0);
+            $table->string('user_role')->nullable();
         });
         Schema::create('appointment', function (Blueprint $table) {
             $table->id();
@@ -57,8 +58,8 @@ class PrivatePrescriptionAccessTest extends TestCase
             ['id' => 104, 'name' => 'Synthetic Other Doctor', 'email' => 'other@example.test'],
         ]);
         DB::table('doctor')->insert([
-            ['id' => 201, 'user_id' => 102, 'is_approved' => 1, 'status' => 1],
-            ['id' => 202, 'user_id' => 104, 'is_approved' => 1, 'status' => 1],
+            ['id' => 201, 'user_id' => 102, 'is_approved' => 1, 'status' => 1, 'user_role' => 'doctor'],
+            ['id' => 202, 'user_id' => 104, 'is_approved' => 1, 'status' => 1, 'user_role' => 'doctor'],
         ]);
         DB::table('appointment')->insert([
             'id' => 301,
@@ -134,6 +135,10 @@ class PrivatePrescriptionAccessTest extends TestCase
 
         DB::table('doctor')->where('id', 201)
             ->update(['is_approved' => 1, 'status' => 0]);
+        $this->get($url)->assertNotFound();
+
+        DB::table('doctor')->where('id', 201)
+            ->update(['status' => 1, 'user_role' => 'provider']);
         $this->get($url)->assertNotFound();
     }
 
