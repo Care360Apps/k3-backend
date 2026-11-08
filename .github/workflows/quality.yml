@@ -45,7 +45,11 @@ jobs:
           php -l tools/test_professional_firebase_gate_contract.php
           php tools/test_professional_firebase_gate_contract.php
       - name: Private medical authorization and storage source contract
-        run: php tools/test_private_medical_download_contract.php
+        run: |
+          php tools/test_private_medical_download_contract.php
+          php -l app/Http/Controllers/PatientMedicalFileController.php
+          php -l tools/test_clinical_suspension_and_private_provenance_contract.php
+          php tools/test_clinical_suspension_and_private_provenance_contract.php
       - name: Private prescription write cutoff source contract (opt-in)
         run: php tools/test_private_prescription_write_contract.php
       - name: Private/legacy route runtime regression (no Laravel or database)
