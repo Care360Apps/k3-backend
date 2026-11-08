@@ -31,26 +31,34 @@ class PrivatePrescriptionWriteTest extends TestCase
         );
     }
 
-    public function test_pilot_flag_defaults_off_and_links_require_auth_in_private_mode(): void
+    public function test_links_are_resolved_per_document_regardless_of_flag(): void
     {
-        config()->set('medical_files.private_prescription_writes', false);
-        $this->assertFalse(PrivatePrescriptionStorage::enabled());
-        $this->assertSame('', PrivatePrescriptionStorage::appointmentUrl(10, null));
-        $this->assertStringContainsString(
-            '/prescription/upload/testfile.pdf',
-            PrivatePrescriptionStorage::appointmentUrl(10, 'testfile.pdf')
-        );
+        $private = 'k3priv_'.str_repeat('a', 40).'.pdf';
+        $legacy = str_repeat('b', 32).'.pdf';
 
-        config()->set('medical_files.private_prescription_writes', true);
-        $this->assertTrue(PrivatePrescriptionStorage::enabled());
-        $this->assertStringEndsWith(
-            '/api/medical-files/appointments/10/prescription',
-            PrivatePrescriptionStorage::appointmentUrl(10, 'testfile.pdf')
-        );
-        $this->assertStringNotContainsString(
-            '/prescription/upload/',
-            PrivatePrescriptionStorage::appointmentUrl(10, 'testfile.pdf')
-        );
+        foreach ([false, true] as $flag) {
+            config()->set('medical_files.private_prescription_writes', $flag);
+            $this->assertSame($flag, PrivatePrescriptionStorage::enabled());
+            $this->assertSame('', PrivatePrescriptionStorage::appointmentUrl(10, null));
+            $this->assertTrue(PrivatePrescriptionStorage::isPrivateFilename($private));
+            $this->assertFalse(PrivatePrescriptionStorage::isPrivateFilename($legacy));
+            $this->assertStringEndsWith(
+                '/api/medical-files/appointments/10/prescription',
+                PrivatePrescriptionStorage::appointmentUrl(10, $private)
+            );
+            $this->assertStringEndsWith(
+                '/prescription/upload/'.$legacy,
+                PrivatePrescriptionStorage::appointmentUrl(10, $legacy)
+            );
+            $this->assertSame(
+                '',
+                PrivatePrescriptionStorage::appointmentUrl(10, '../unauthorized.pdf')
+            );
+            $this->assertSame(
+                '',
+                PrivatePrescriptionStorage::appointmentUrl(10, 'https://external.test/evil.pdf')
+            );
+        }
     }
 
     public function test_synthetic_pdf_is_written_privately_and_cleaned_up(): void
@@ -60,7 +68,7 @@ class PrivatePrescriptionWriteTest extends TestCase
         $filename = $storage->store($this->syntheticUpload($body));
         $path = storage_path('app/private/medical/prescriptions/'.$filename);
         try {
-            $this->assertMatchesRegularExpression('/^[a-f0-9]{40}\\.pdf$/D', $filename);
+            $this->assertMatchesRegularExpression('/^k3priv_[a-f0-9]{40}\.pdf$/D', $filename);
             $this->assertFileExists($path);
             $this->assertSame($body, file_get_contents($path));
             if (DIRECTORY_SEPARATOR !== '\\') {
