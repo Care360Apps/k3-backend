@@ -83,3 +83,13 @@
 On a clean, authorized checkout of the pinned backend candidate, run `php tools/run_backend_security_checks.php` with PHP 8.3+ from the repository root. It syntax-checks PHP source and executes standalone regression scripts without production database credentials, Laravel migrations or external gateway calls. Save redacted command output and exact commit SHA for handover.
 
 **Do not label this output a Laravel end-to-end test.** For full acceptance, Composer dependencies must be installed in an isolated synthetic staging environment and PHPUnit, database migrations and authenticated medical/financial API tests must be run separately. A private Actions run failing with no steps is not evidence of source failure or success. Never point `php artisan test` or any migration command at Namecheap production.
+
+## Atomic receipt ledger API behavior (draft only)
+
+When a successful gateway verification creates a Care360 appointment, laboratory order, medicine order, or doctor subscription, the backend now has an **opt-in** unique receipt claim. The **request/response field names remain unchanged**, but with `K3_ATOMIC_PAYMENT_RECEIPTS=true`, a reused verified receipt returns an ordinary Laravel `422` error under `payment_token` and the new order transaction is rolled back. The new ledger migration must be applied before turning on the gate; a missing ledger also rejects paid orders. Unpaid/COD bookings do not create ledger rows.
+
+**Flutter Patient / Plus handling:** Do not treat a duplicate-charge validation response as permission to charge the customer again automatically. Show a reconciliation/retry-safe status and let customer support locate the original transaction by a trusted gateway reference. The backend does **not** currently expose a safe idempotent reconciliation endpoint or guarantee no repeated external charges. Installed clients must be tested with the sandbox before feature activation.
+
+**Developer controls:** `K3_ATOMIC_PAYMENT_RECEIPTS=false` by default, and `payment_receipt_claims` migration `2026_11_08_070000_create_payment_receipt_claims.php`. Before enabling, review past payment records against provider receipts and backfill the ledger with independently verified history. Test two concurrent requests bearing the same payment reference under MySQL. The ledger's unique `receipt_sha256` column is the concurrency guarantee, not the earlier PHP preflight search. **Do not backfill from untrusted historical paid status flags alone.**
+
+The migration is additive and reversible only when its ledger is empty. Once claims exist, the ledger must be retained for audit/replay defense. No production backfill, migration or feature activation has been performed.
