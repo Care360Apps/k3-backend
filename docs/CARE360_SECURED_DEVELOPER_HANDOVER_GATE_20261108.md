@@ -24,6 +24,14 @@ The first two are missing from the most recent protected-runner verification; th
 
 A read-only GitHub connector available inside ChatGPT does **not** automatically grant public GitHub Actions runners access to private source; passing the connector's credentials across services is not supported.
 
+## 8 November safety corrections — staged, not deployed
+
+- **Mixed-mode prescription routing:** New private records are labeled `k3priv_<40 hex characters>.pdf`. API responses choose the authenticated private route **per record**, independently of whether `K3_PRIVATE_PRESCRIPTION_WRITES` is currently on. Older public records retain their legacy links until individually migrated. Turning the flag off cannot publish a previously private record. Invalid `k3priv_` filenames fail closed instead of falling back to public URLs.
+- **Professional access revocation:** Download authorization also checks the assigned clinician is currently approved and active. A previously assigned but suspended or unapproved professional must receive 404, with synthetic regression coverage.
+- **Plus prescription acknowledgement:** PDF uploads now require server HTTP success **and** JSON `success:true`, and the Patient Information screen must await that result before showing a success message. Newly generated PDFs are sent and previewed from memory; no shared Downloads or persistent generated-PDF file is required. Existing professional upload/clinical role rules still require staging acceptance.
+- **Synthetic tests:** `php tools/test_private_prescription_urls_runtime.php` is a Laravel-free runtime selector test added to private backend CI; Plus has updated source/widget regression assertions for no false-success or persisted PDF. A separately reconstructed PHP selector harness passed 56 synthetic route/filename cases locally; this does **not** replace running the actual private repository's CI and full Laravel authorization tests.
+- **Testing remains blocked:** public encrypted Plus and backend workflows still lack their separate read-only private-source tokens. Do not merge/deploy merely because local selector logic or Patient Flutter source tests pass.
+
 ## Mandatory patient data protection acceptance
 1. Keep any publicly accessible clinical document URLs confidential; do not share sample medical files or access tokens in issues or screenshots.
 2. Dry-run `php artisan medical-files:inventory-safe` on a synthetic staging database first, then via authorized operator against protected production data only when approved.
