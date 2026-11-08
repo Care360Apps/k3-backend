@@ -62,6 +62,15 @@ jobs:
           php tools/test_medical_migration_contract.php
           php tools/test_stripe_charge_binding_contract.php
           php tools/test_subscription_activation_contract.php
+      - name: Doctor web payment status, signed checkout and cross-app subscription ownership
+        run: |
+          php -l app/Services/SubscriptionCheckoutReference.php
+          php -l app/Http/Controllers/Doctor/DoctorSubscriptionController.php
+          php -l app/Http/Controllers/SuperAdmin/SubscriptionController.php
+          php -l tools/test_subscription_checkout_binding.php
+          php -l tools/test_web_subscription_payment_contract.php
+          php tools/test_subscription_checkout_binding.php
+          php tools/test_web_subscription_payment_contract.php
       - name: Atomic receipt claims across appointments, lab, pharmacy and subscriptions
         run: |
           php -l app/Services/PaymentReceiptClaimService.php
