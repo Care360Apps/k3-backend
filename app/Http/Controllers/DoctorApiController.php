@@ -55,14 +55,24 @@ class DoctorApiController extends Controller
             if ($userDoctor->hasRole('doctor')) {
                 if ($userDoctor->verify == 1) {
                     $doctor = Doctor::where('user_id', auth()->user()->id)->first();
-                    // Surface approval status to the app so it can show pending/approved banners.
-                    $userDoctor['approval_status'] = $doctor && (int) ($doctor->is_approved ?? 0) === 1 ? 'approved' : 'pending';
+                    // Missing or mismatched clinical profiles cannot authenticate as doctors.
+                    if (! $doctor || ($doctor->user_role !== null && $doctor->user_role !== 'doctor')) {
+                        return response(['success' => false, 'msg' => 'Doctor profile not found.'], 403);
+                    }
+                    // Revoking either account or profile access must take effect on re-login.
+                    if ((int) $userDoctor->status !== 1 || (int) $doctor->status !== 1) {
+                        return response(['success' => false, 'msg' => 'You are blocked please contact to admin.'], 403);
+                    }
+                    // Pending applicants can complete onboarding, but are not given Firebase chat credentials.
+                    $userDoctor['approval_status'] = (int) $doctor->is_approved === 1 ? 'approved' : 'pending';
                     if (isset($request->device_token)) {
                         $userDoctor->device_token = $request->device_token;
                         $userDoctor->save();
                     }
                     $userDoctor['is_filled'] = $doctor->is_filled;
-                    $firebaseToken = (new FirebaseTokenService())->doctorToken($userDoctor->id);
+                    $firebaseToken = (int) $doctor->is_approved === 1
+                        ? (new FirebaseTokenService())->doctorToken($userDoctor->id)
+                        : null;
                     if ($doctor->status == 1) {
                         if ($doctor->based_on == 'subscription') {
                             $subscription = DoctorSubscription::where([['doctor_id', $doctor->id], ['status', 1]])->first();
