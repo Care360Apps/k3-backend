@@ -36,7 +36,7 @@
 - `DoctorApiController::apiPurchaseSubscription`: unpaid or tokenless requests now remain inactive and do not displace a previously paid subscription; replacement occurs transactionally only when payment is verified.
 - `DoctorApiController::apiStatusChange`: require current approval/active state, lock the appointment and create at most one settlement on concurrent close requests; push transport errors are logged without exception detail.
 - Doctor Agora and outbound chat-push endpoints now check active, approved status before issuing new tokens or notifications.
-- `StageLegacyPrescriptions` + migration ledger: opt-in synthetic-only staging copy preserving public source; SHA256 digest, compare-and-swap DB update and rollback to original if its digest still matches. No source/private file deletion and no production execution.
+- `StageLegacyPrescriptions` + migration ledger: opt-in synthetic-only staging copy preserving public source; SHA256 digest, compare-and-swap DB update and rollback to original if its digest still matches. No source/private file deletion and no production execution. Writes additionally reject any database not clearly named `synthetic` (except isolated SQLite `:memory:` fixtures).
 - Unit/source and synthetic feature regression test fixtures updated for provider and revocation cases.
 
 ## Current tested evidence and limitations
