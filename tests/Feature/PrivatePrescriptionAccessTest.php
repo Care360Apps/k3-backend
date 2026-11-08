@@ -64,7 +64,7 @@ class PrivatePrescriptionAccessTest extends TestCase
             'doctor_id' => 201,
         ]);
 
-        $this->filename = str_repeat('a', 40).'.pdf';
+        $this->filename = bin2hex(random_bytes(20)).'.pdf';
         DB::table('prescription')->insert([
             'id' => 401,
             'appointment_id' => 301,
