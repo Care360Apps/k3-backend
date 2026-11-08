@@ -568,7 +568,13 @@ class DoctorApiController extends Controller
             'id' => 'required',
             'status' => 'required|in:approve,cancel,complete',
         ]);
-        $appointment = Appointment::where('id', $request->id)->where('doctor_id', $this->ownDoctorId())->first();
+        $activeProfessional = Doctor::where('user_id', auth()->id())
+            ->where('is_approved', 1)->where('status', 1)->first();
+        if (! $activeProfessional) {
+            return response(['success' => false, 'msg' => 'Professional approval required'], 403);
+        }
+        $appointment = Appointment::where('id', $request->id)
+            ->where('doctor_id', $activeProfessional->id)->first();
         if (! $appointment) {
             return response(['success' => false, 'msg' => 'Appointment not found'], 404);
         }
@@ -984,7 +990,8 @@ class DoctorApiController extends Controller
         $request->validate([
             'to_id' => 'bail|required|integer',
         ]);
-        $doctor = Doctor::where('user_id', auth()->id())->firstOrFail();
+        $doctor = Doctor::where('user_id', auth()->id())
+            ->where('is_approved', 1)->where('status', 1)->firstOrFail();
         if (! Appointment::hasOpenBooking((int) $request->to_id, $doctor->id, 'video_call')) {
             return response()->json(['success' => false, 'msg' => 'You can only call a patient with a booked virtual consultation.'], 403);
         }
@@ -1082,7 +1089,8 @@ class DoctorApiController extends Controller
         }
 
         $doctorUser = $request->user();
-        $doctor = $doctorUser ? Doctor::where('user_id', $doctorUser->id)->first() : null;
+        $doctor = $doctorUser ? Doctor::where('user_id', $doctorUser->id)
+            ->where('is_approved', 1)->where('status', 1)->first() : null;
         $recipient = User::where('device_token', $request->input('to_device_token'))->first();
 
         if (! $doctor || ! $recipient || ! Appointment::query()
