@@ -37,6 +37,12 @@ jobs:
         run: php tools/test_private_medical_download_contract.php
       - name: Private prescription write cutoff source contract (opt-in)
         run: php tools/test_private_prescription_write_contract.php
+      - name: Private/legacy route runtime regression (no Laravel or database)
+        run: |
+          php -l tools/test_private_prescription_urls_runtime.php
+          php tools/test_private_prescription_urls_runtime.php
+      - name: Read-only runtime configuration preflight source guard
+        run: php tools/test_security_preflight_contract.php
       - name: Provider approval and valid proximity discovery
         run: php tools/test_provider_discovery_contract.php
       - name: Opt-in Nearby Care shift and location privacy safety
