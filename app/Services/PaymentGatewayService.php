@@ -82,7 +82,10 @@ class PaymentGatewayService
      *
      * @param  class-string<\Illuminate\Database\Eloquent\Model>  $modelClass  used to reject a payment token that was already used
      */
-    public function resolve(array $data, string $modelClass, int $userId, ?float $chargeAmount = null): array
+    public function resolve(
+        array $data, string $modelClass, int $userId, ?float $chargeAmount = null,
+        ?string $expectedFlutterwaveReference = null
+    ): array
     {
         $type = strtoupper((string) ($data['payment_type'] ?? ''));
         if ($type === 'RAZOR') {
@@ -105,7 +108,8 @@ class PaymentGatewayService
             'STRIPE' => fn () => $this->verifyStripe($token, $amount, $userId),
             'PAYPAL' => fn () => $this->verifyPaypal($token, $amount, $userId),
             'PAYSTACK' => config('services.paystack.secret') ? fn () => $this->verifyPaystack($token, $amount, $userId) : null,
-            'FLUTTERWAVE' => config('services.flutterwave.secret') ? fn () => $this->verifyFlutterwave($token, $amount) : null,
+            'FLUTTERWAVE' => config('services.flutterwave.secret')
+                ? fn () => $this->verifyFlutterwave($token, $amount, $expectedFlutterwaveReference) : null,
             'RAZORPAY' => config('services.razorpay.secret') ? fn () => $this->verifyRazorpay($token, $amount) : null,
         };
         if ($verify === null) {
@@ -192,6 +196,7 @@ class PaymentGatewayService
             'amount' => $this->toMinorUnits($amount),
             'currency' => strtolower($this->setting->currency_code),
             'source' => $token,
+            'metadata' => ['user_id' => (string) $userId],
         ]);
         if ($charge->status !== 'succeeded') {
             $this->fail();
@@ -272,7 +277,9 @@ class PaymentGatewayService
         return $reference;
     }
 
-    private function verifyFlutterwave(string $transactionId, float $amount): string
+    private function verifyFlutterwave(
+        string $transactionId, float $amount, ?string $expectedReference = null
+    ): string
     {
         $data = Http::withToken(config('services.flutterwave.secret'))
             ->get('https://api.flutterwave.com/v3/transactions/'.rawurlencode($transactionId).'/verify')
@@ -280,7 +287,11 @@ class PaymentGatewayService
             ->json('data');
         if (($data['status'] ?? null) !== 'successful'
             || ! $this->sameCurrency($data['currency'] ?? null)
-            || (float) ($data['amount'] ?? 0) + 0.001 < $amount) {
+            || (float) ($data['amount'] ?? 0) + 0.001 < $amount
+            || ($expectedReference !== null
+                && (! isset($data['tx_ref']) || ! is_string($data['tx_ref'])
+                    || ! hash_equals($expectedReference, $data['tx_ref'])
+                    || (string) ($data['id'] ?? '') !== $transactionId))) {
             $this->fail();
         }
 
