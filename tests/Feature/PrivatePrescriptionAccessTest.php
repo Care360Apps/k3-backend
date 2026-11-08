@@ -35,6 +35,8 @@ class PrivatePrescriptionAccessTest extends TestCase
         Schema::create('doctor', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('user_id');
+            $table->unsignedTinyInteger('is_approved')->default(0);
+            $table->unsignedTinyInteger('status')->default(0);
         });
         Schema::create('appointment', function (Blueprint $table) {
             $table->id();
@@ -55,8 +57,8 @@ class PrivatePrescriptionAccessTest extends TestCase
             ['id' => 104, 'name' => 'Synthetic Other Doctor', 'email' => 'other@example.test'],
         ]);
         DB::table('doctor')->insert([
-            ['id' => 201, 'user_id' => 102],
-            ['id' => 202, 'user_id' => 104],
+            ['id' => 201, 'user_id' => 102, 'is_approved' => 1, 'status' => 1],
+            ['id' => 202, 'user_id' => 104, 'is_approved' => 1, 'status' => 1],
         ]);
         DB::table('appointment')->insert([
             'id' => 301,
@@ -64,7 +66,7 @@ class PrivatePrescriptionAccessTest extends TestCase
             'doctor_id' => 201,
         ]);
 
-        $this->filename = bin2hex(random_bytes(20)).'.pdf';
+        $this->filename = 'k3priv_'.bin2hex(random_bytes(20)).'.pdf';
         DB::table('prescription')->insert([
             'id' => 401,
             'appointment_id' => 301,
@@ -122,4 +124,17 @@ class PrivatePrescriptionAccessTest extends TestCase
             ->get('/api/medical-files/appointments/301/prescription')
             ->assertNotFound();
     }
+    public function test_revoked_or_disabled_assigned_professional_loses_access(): void
+    {
+        $url = '/api/medical-files/appointments/301/prescription';
+        $this->actingAs(User::findOrFail(102), 'api')->get($url)->assertOk();
+
+        DB::table('doctor')->where('id', 201)->update(['is_approved' => 0]);
+        $this->get($url)->assertNotFound();
+
+        DB::table('doctor')->where('id', 201)
+            ->update(['is_approved' => 1, 'status' => 0]);
+        $this->get($url)->assertNotFound();
+    }
+
 }
