@@ -59,10 +59,18 @@ namespace Illuminate\Support\Facades {
 namespace Stripe {
     class StripeClient {
         public object $paymentIntents;
+        public object $charges;
+        public static array $lastCharge = [];
         public static array $intent = [];
         public function __construct($key) {
             $this->paymentIntents = new class {
                 public function retrieve($id): object { return (object) StripeClient::$intent; }
+            };
+            $this->charges = new class {
+                public function create($data): object {
+                    StripeClient::$lastCharge = $data;
+                    return (object) ['id' => 'ch_synthetic', 'status' => 'succeeded'];
+                }
             };
         }
     }
@@ -87,14 +95,17 @@ namespace {
     require __DIR__.'/../app/Services/PaymentGatewayService.php';
     $GLOBALS['gatewaySecret'] = 'synthetic';
     $passed = 0;
-    function checkCase(string $label, string $type, string $token, bool $expected): void {
+    function checkCase(
+        string $label, string $type, string $token, bool $expected,
+        ?string $expectedFlutterwaveRef = null
+    ): void {
         global $passed;
         $accepted = false;
         try {
             $result = (new PaymentGatewayService)->resolve([
                 'payment_type' => $type, 'payment_token' => $token,
                 'payment_status' => 1, 'amount' => 100,
-            ], FakeOrder::class, 7, 100);
+            ], FakeOrder::class, 7, 100, $expectedFlutterwaveRef);
             $accepted = $result['payment_status'] === 1;
         } catch (ValidationException $e) {}
         if ($accepted !== $expected) throw new \RuntimeException($label);
@@ -119,6 +130,10 @@ namespace {
     StripeClient::$intent['metadata']['user_id'] = 8;
     checkCase('Stripe wrong owner rejected', 'STRIPE', 'pi_1', false);
     StripeClient::$intent['metadata']['user_id'] = 7;
+    checkCase('Stripe source token generates verified account-owned charge', 'STRIPE', 'tok_test', true);
+    if ((string) (StripeClient::$lastCharge['metadata']['user_id'] ?? '') !== '7') {
+        throw new \RuntimeException('Stripe card-token charge lacks authenticated ownership metadata');
+    }
     FakeOrder::$duplicate = true;
     checkCase('existing order payment token rejected', 'STRIPE', 'pi_1', false);
     FakeOrder::$duplicate = false;
@@ -172,6 +187,22 @@ namespace {
     checkCase('PayPal v2 mismatched owner is rejected', 'PAYPAL', 'ORDER-1', false);
     unset(Http::$payload['purchase_units'][0]['custom_id']);
     checkCase('PayPal v2 unbound order rejected', 'PAYPAL', 'ORDER-1', false);
+
+    Http::$payload = ['data'=>[
+        'id'=>4321, 'status'=>'successful', 'currency'=>'NGN',
+        'amount'=>100, 'tx_ref'=>'signed-synthetic-subscription',
+    ]];
+    checkCase('Flutterwave reference is correctly bound to subscription',
+        'FLUTTERWAVE', '4321', true, 'signed-synthetic-subscription');
+    checkCase('Flutterwave payment belonging to different subscription is rejected',
+        'FLUTTERWAVE', '4321', false, 'another-subscription');
+    unset(Http::$payload['data']['tx_ref']);
+    checkCase('Flutterwave missing subscription reference is rejected',
+        'FLUTTERWAVE', '4321', false, 'signed-synthetic-subscription');
+    Http::$payload['data']['tx_ref'] = 'signed-synthetic-subscription';
+    Http::$payload['data']['id'] = 9999;
+    checkCase('Flutterwave mismatch between transaction ID and receipt is rejected',
+        'FLUTTERWAVE', '4321', false, 'signed-synthetic-subscription');
 
     Http::$payload = ['status'=>'authorized','currency'=>'NGN','amount'=>10000];
     checkCase('Razorpay authorization alone is unpaid', 'RAZORPAY', 'pay_1', false);
