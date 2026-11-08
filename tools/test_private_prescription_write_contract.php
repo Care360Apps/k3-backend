@@ -34,8 +34,13 @@ $checks = [
         str_contains($code['service'], "getMimeType()")
         && str_contains($code['service'], "10 * 1024 * 1024")
         && str_contains($code['service'], "'%PDF-'"),
-    'Private filenames are cryptographically unpredictable' =>
-        str_contains($code['service'], "bin2hex(random_bytes(20)).'.pdf'"),
+    'Private filenames are cryptographically unpredictable and versioned' =>
+        str_contains($code['service'], "'k3priv_'.bin2hex(random_bytes(20)).'.pdf'"),
+    'Document provenance is checked independently of the rollout flag' =>
+        str_contains($code['service'], 'public static function isPrivateFilename(')
+        && str_contains($code['service'], 'if (self::isPrivateFilename($filename))')
+        && ! str_contains($code['service'], 'return self::enabled()')
+        && str_contains($code['patient'], 'PrivatePrescriptionStorage::isPrivateFilename($prescription->pdf)'),
     'Private directory rejects symlinks and file is owner-only' =>
         str_contains($code['service'], 'is_link($path)')
         && str_contains($code['service'], 'chmod($moved->getPathname(), 0600)'),
@@ -46,9 +51,10 @@ $checks = [
     'Failed database write removes new private file' =>
         str_contains($code['doctor'], '$privateStore->discard($privateFilename)')
         && str_contains($code['doctor'], 'Prescription::create($pre)'),
-    'Private writer never returns a public URL when enabled' =>
+    'Private files never resolve to public URLs after flag rollback' =>
         str_contains($code['service'], "url('api/medical-files/appointments/'")
-        && str_contains($code['service'], "return self::enabled()"),
+        && str_contains($code['service'], "if (self::isPrivateFilename($filename))")
+        && str_contains($code['service'], "url('prescription/upload/'.$filename)"),
     'Doctor and patient endpoints return mode-consistent URLs' =>
         str_contains($code['doctor'], 'PrivatePrescriptionStorage::appointmentUrl')
         && substr_count($code['patient'], 'PrivatePrescriptionStorage::appointmentUrl') >= 2,
