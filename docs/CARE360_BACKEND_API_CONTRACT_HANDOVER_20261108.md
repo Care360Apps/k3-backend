@@ -77,3 +77,9 @@
 6. **Sensitive booking logs.** Raw external mail and push exception text has been replaced with fixed warning labels; no patient payloads or credentials should reach logs.
 
 **Testing:** corresponding synthetic feature and offline source checks are committed, but real PHP/Composer/Laravel integration tests have not run successfully because private Actions jobs fail before recording steps. The code changes above are a draft contract, not approved live behavior.
+
+## Portable offline PHP checks for the publishing developer
+
+On a clean, authorized checkout of the pinned backend candidate, run `php tools/run_backend_security_checks.php` with PHP 8.3+ from the repository root. It syntax-checks PHP source and executes standalone regression scripts without production database credentials, Laravel migrations or external gateway calls. Save redacted command output and exact commit SHA for handover.
+
+**Do not label this output a Laravel end-to-end test.** For full acceptance, Composer dependencies must be installed in an isolated synthetic staging environment and PHPUnit, database migrations and authenticated medical/financial API tests must be run separately. A private Actions run failing with no steps is not evidence of source failure or success. Never point `php artisan test` or any migration command at Namecheap production.
