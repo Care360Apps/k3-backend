@@ -19,7 +19,7 @@ foreach ($protected as $route) {
     $matched = false;
     foreach (explode("\n", $routes) as $line) {
         if (str_contains($line, "Route::")
-            && str_contains($line, "'".$route."'")
+            && (str_contains($line, "'".$route."'") || str_contains($line, "'/".$route."'"))
             && str_contains($line, 'EnsureApprovedProfessional::class')) {
             $matched = true;
             break;
