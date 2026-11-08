@@ -14,6 +14,7 @@ use App\Services\MedicineStockGuard;
 use App\Services\PharmacyCommission;
 use App\Services\OtpService;
 use App\Services\PaymentGatewayService;
+use App\Services\PrivatePrescriptionStorage;
 use App\Models\Appointment;
 use App\Models\Banner;
 use App\Models\Blog;
@@ -805,8 +806,18 @@ class UserApiController extends Controller
             return response(['success' => false, 'msg' => 'Appointment not found'], 404);
         }
         $appointment->doctor = Doctor::with('treatment:id,name')->where('id', $appointment->doctor_id)->first(['id', 'name', 'image', 'treatment_id']);
-        $appointment->prescription = Prescription::where('appointment_id', $id)->first();
-        $appointment->prescription['pdfPath'] = url('prescription/upload/'.$appointment->prescription['pdf']);
+        $prescription = Prescription::where('appointment_id', $id)
+            ->where('user_id', auth()->id())->first();
+        if (! $prescription) {
+            return response(['success' => false, 'msg' => 'Prescription not found'], 404);
+        }
+        $prescription['pdfPath'] = PrivatePrescriptionStorage::appointmentUrl(
+            (int) $appointment->id, $prescription->pdf
+        );
+        if (PrivatePrescriptionStorage::enabled()) {
+            $prescription->makeHidden(['pdf']);
+        }
+        $appointment->prescription = $prescription;
 
         return response(['success' => true, 'data' => $appointment, 'msg' => 'Doctor Prescription']);
     }
@@ -1141,7 +1152,9 @@ class UserApiController extends Controller
         $appointment['pdf'] = '';
         if (Prescription::where('appointment_id', $id)->exists()) {
             $pdf = Prescription::where('appointment_id', $id)->first()->pdf;
-            $appointment['pdf'] = url('prescription/upload').'/'.$pdf;
+            $appointment['pdf'] = PrivatePrescriptionStorage::appointmentUrl(
+                (int) $appointment->id, $pdf
+            );
         }
 
         return response(['success' => true, 'data' => $appointment, 'msg' => 'Appointment details']);
