@@ -32,7 +32,7 @@ function block(string $src, string $start, string $end): string
     return substr($src, $i, $j-$i);
 }
 $booking = block($code['patient'], 'apiBooking', 'apiAppointments');
-$lab = block($code['patient'], 'apiLabBook', 'priceLabTests');
+$lab = block($code['patient'], 'apiLabBook', 'apiBookMedicine');
 $medicine = block($code['patient'], 'apiBookMedicine', 'apiMedicines');
 $subscription = block($code['professional'], 'apiPurchaseSubscription', 'apiPaystackInit');
 $checks = [
