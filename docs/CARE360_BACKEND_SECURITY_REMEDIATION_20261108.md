@@ -81,3 +81,18 @@ An isolated PHP 8.4 command-line environment syntax-checked **four exact files**
 | `tools/run_backend_security_checks.php` | `97e9dbf73809e6197d961796908b4384a99666f7` | PASS |
 
 This is genuine syntax execution for those four files only. The other Laravel files and source-contract test bodies have **not** been linted locally as a complete checkout; Composer/Laravel integration, workflow payment fixtures and clinical/MySQL tests remain **UNVERIFIED**. GitHub Actions still reports both jobs failed before recording steps. The tool to run on an authorized complete developer checkout is `php tools/run_backend_security_checks.php` — read-only PHP lint and offline synthetic checks; it deliberately does not run database migrations or PHPUnit.
+
+## Pending clinician Firebase credentials and suspension — continuation on 8 November 2026
+
+The doctor login previously minted a Firebase custom token **before** checking professional approval. Provider registration/login likewise issued tokens to applicants whose credentials had not yet been approved. Firebase chat/backend rules could treat these tokens as authenticated professional identities even while the Laravel clinical routes were guarded.
+
+This draft branch now:
+- Sets `doctor.is_approved=0` explicitly at **provider registration** and returns `approval_status=pending` without a Firebase custom token.
+- Permits pending provider/doctor applicants to authenticate with Passport for onboarding/profile completion, while **only active, approved, correctly typed professional profiles** receive Firebase custom login tokens. Mismatched or absent Doctor/Provider profiles fail login.
+- Rejects users with `users.status != 1` at doctor/provider login and on every `EnsureApprovedProfessional`-guarded request, including requests using previously issued Passport access tokens.
+- Refuses the assigned clinician's private prescription download if their account becomes suspended; patients retain their own medical-document access when their clinician is suspended.
+- Adds source-only contract `tools/test_professional_firebase_gate_contract.php` to offline QA/CI, and synthetic SQLite feature tests for suspended professional guard and private medical downloads.
+
+**Important limitation:** Withholding new Firebase custom tokens does **not revoke Firebase sessions already established**. Firebase custom tokens can be exchanged for longer-lived sessions; a one-hour custom token expiry does not itself revoke those sessions. A security owner must inspect the actual Firebase rules for doctor/provider chat access, revoke affected Firebase refresh tokens and invalidate sessions/roles on suspension as appropriate. This is not implemented/tested here because the Firebase projects/rules are outside this backend branch. Do not infer private chat revocation from Laravel authorization alone.
+
+**Verification:** Source committed to draft PR #32. No authenticated Firebase sandbox sign-in, rules validation, Composer, or Laravel/PHPUnit execution is claimed. Private Actions jobs have ended failed before any steps were recorded; investigate org Actions billing, access, or runner policy from the owning account rather than guessing which one is responsible. The source-only test does not replace these integration checks.
