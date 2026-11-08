@@ -9,6 +9,7 @@ use App\Models\Setting;
 use App\Models\Subscription;
 use App\Services\PaymentGatewayService;
 use App\Services\PaymentReceiptClaimService;
+use App\Services\SubscriptionCheckoutReference;
 use Carbon\Carbon;
 use Gate;
 use Illuminate\Http\Request;
@@ -92,9 +93,17 @@ class DoctorSubscriptionController extends Controller
     public function subscription_flutter($subscription_id)
     {
         $subscription = $this->ownSubscription($subscription_id);
+        if ((int) $subscription->payment_status === 1) {
+            return redirect('/subscription');
+        }
         $subscription->customer = auth()->user();
+        // A unique, server-signed checkout reference binds this transaction
+        // to the pending subscription, owner and authoritative amount.
+        $txRef = SubscriptionCheckoutReference::forSubscription(
+            (int) $subscription->id, (int) auth()->id(), (float) $subscription->amount
+        );
 
-        return view('doctor.subscription.flutter', compact('subscription'));
+        return view('doctor.subscription.flutter', compact('subscription', 'txRef'));
     }
 
     public function subscription_flutter_verify(Request $request, $subscription_id)
@@ -104,11 +113,14 @@ class DoctorSubscriptionController extends Controller
             return redirect('/subscription');
         }
 
+        $expectedRef = SubscriptionCheckoutReference::forSubscription(
+            (int) $subscription->id, (int) auth()->id(), (float) $subscription->amount
+        );
         $data = (new PaymentGatewayService)->resolve([
             'payment_type' => 'FLUTTERWAVE',
             'payment_token' => (string) $request->input('transaction_id'),
             'amount' => (float) $subscription->amount,
-        ], DoctorSubscription::class, auth()->id());
+        ], DoctorSubscription::class, auth()->id(), null, $expectedRef);
         if ((int) ($data['payment_status'] ?? 0) !== 1) {
             throw ValidationException::withMessages([
                 'payment_token' => __('Payment could not be verified.'),
