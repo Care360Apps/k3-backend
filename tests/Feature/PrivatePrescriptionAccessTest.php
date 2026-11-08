@@ -32,6 +32,17 @@ class PrivatePrescriptionAccessTest extends TestCase
             $table->string('email')->nullable();
             $table->string('password')->nullable();
         });
+        Schema::create('roles', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->string('guard_name');
+            $table->timestamps();
+        });
+        Schema::create('model_has_roles', function (Blueprint $table) {
+            $table->unsignedBigInteger('role_id');
+            $table->string('model_type');
+            $table->unsignedBigInteger('model_id');
+        });
         Schema::create('doctor', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('user_id');
@@ -56,6 +67,13 @@ class PrivatePrescriptionAccessTest extends TestCase
             ['id' => 102, 'name' => 'Synthetic Assigned Doctor', 'email' => 'doctor@example.test'],
             ['id' => 103, 'name' => 'Synthetic Stranger', 'email' => 'stranger@example.test'],
             ['id' => 104, 'name' => 'Synthetic Other Doctor', 'email' => 'other@example.test'],
+        ]);
+        DB::table('roles')->insert([
+            'id' => 1, 'name' => 'doctor', 'guard_name' => 'api',
+        ]);
+        DB::table('model_has_roles')->insert([
+            ['role_id' => 1, 'model_type' => User::class, 'model_id' => 102],
+            ['role_id' => 1, 'model_type' => User::class, 'model_id' => 104],
         ]);
         DB::table('doctor')->insert([
             ['id' => 201, 'user_id' => 102, 'is_approved' => 1, 'status' => 1, 'user_role' => 'doctor'],
@@ -140,6 +158,10 @@ class PrivatePrescriptionAccessTest extends TestCase
         DB::table('doctor')->where('id', 201)
             ->update(['status' => 1, 'user_role' => 'provider']);
         $this->get($url)->assertNotFound();
+
+        DB::table('doctor')->where('id', 201)->update(['user_role' => 'doctor']);
+        DB::table('model_has_roles')->where('model_id', 102)->delete();
+        $this->actingAs(User::findOrFail(102), 'api')->get($url)->assertNotFound();
     }
 
 }
