@@ -35,6 +35,7 @@ class PatientMedicalFileController extends Controller
             // even to appointments that were assigned while approved.
             ->where('is_approved', 1)
             ->where('status', 1)
+            ->where('user_role', '!=', 'provider')
             ->exists();
         abort_unless($isPatient || $isAssignedProfessional, 404);
 
@@ -61,6 +62,8 @@ class PatientMedicalFileController extends Controller
             404
         );
 
+        // Never follow an administrative URL or a public-file fallback.
+        // No signed query-token is accepted: revocation takes effect at the next request.
         return response()->download($full, 'care360-prescription.pdf', [
             'Content-Type' => 'application/pdf',
             'Cache-Control' => 'private, no-store, max-age=0',
