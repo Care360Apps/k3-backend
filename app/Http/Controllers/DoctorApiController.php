@@ -926,6 +926,8 @@ class DoctorApiController extends Controller
         // deactivate a previously verified/paid plan.
         $data['status'] = $paid ? 1 : 0;
         $subscription = \Illuminate\Support\Facades\DB::transaction(function () use ($doctor, $data, $paid) {
+            // Serialize Plus and web renewals on the same professional row.
+            Doctor::whereKey($doctor->id)->lockForUpdate()->firstOrFail();
             if ($paid) {
                 DoctorSubscription::where([['status', 1], ['doctor_id', $doctor->id]])
                     ->update(['status' => 0]);
