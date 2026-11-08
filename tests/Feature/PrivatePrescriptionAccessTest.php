@@ -156,6 +156,27 @@ class PrivatePrescriptionAccessTest extends TestCase
         $this->actingAs(User::findOrFail(101), 'api')->get($url)->assertOk();
     }
 
+    public function test_arbitrary_pdf_inside_private_directory_is_not_downloadable(): void
+    {
+        // A stored filename must have private-writer provenance, not merely
+        // look like a safe .pdf basename. This synthetic file exists under
+        // the protected directory to distinguish naming from missing-file 404.
+        $untrustedName = 'external_'.bin2hex(random_bytes(20)).'.pdf';
+        $otherPath = dirname($this->path).DIRECTORY_SEPARATOR.$untrustedName;
+        file_put_contents($otherPath, "%PDF-1.4\nSynthetic unrelated document\n%%EOF\n");
+        try {
+            DB::table('prescription')->where('id', 401)
+                ->update(['pdf' => $untrustedName]);
+            $this->actingAs(User::findOrFail(101), 'api')
+                ->get('/api/medical-files/appointments/301/prescription')
+                ->assertNotFound();
+        } finally {
+            if (is_file($otherPath)) {
+                unlink($otherPath);
+            }
+        }
+    }
+
     public function test_revoked_or_disabled_assigned_professional_loses_access(): void
     {
         $url = '/api/medical-files/appointments/301/prescription';
