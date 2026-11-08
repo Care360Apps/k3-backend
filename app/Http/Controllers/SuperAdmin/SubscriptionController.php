@@ -148,11 +148,14 @@ class SubscriptionController extends Controller
 
     public function changePaymentStatus($id)
     {
-        $subscription = DoctorSubscription::find($id);
-        $subscription->update(['payment_status' => 1]);
-        $doctor = Doctor::find($subscription->doctor_id);
-        $doctor->update(['subscription_status' => 1]);
-
-        return response(['success' => true]);
+        // SECURITY: This legacy GET endpoint previously marked any subscription
+        // paid with no verified gateway receipt and no ownership check. Do not
+        // replace this with a GET-based payment confirmation or an admin bypass.
+        // Use the authenticated subscription payment verification flow instead.
+        return response()->json([
+            'success' => false,
+            'code' => 'PAYMENT_VERIFICATION_REQUIRED',
+            'message' => 'Legacy payment confirmation is no longer supported.',
+        ], 410);
     }
 }
