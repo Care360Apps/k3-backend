@@ -31,6 +31,10 @@ class PatientMedicalFileController extends Controller
         $isAssignedProfessional = ! $isPatient && Doctor::query()
             ->where('user_id', $user->id)
             ->whereKey($appointment->doctor_id)
+            // Disabled or approval-revoked clinical accounts must lose access
+            // even to appointments that were assigned while approved.
+            ->where('is_approved', 1)
+            ->where('status', 1)
             ->exists();
         abort_unless($isPatient || $isAssignedProfessional, 404);
 
