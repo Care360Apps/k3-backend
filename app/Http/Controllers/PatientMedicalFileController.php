@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Appointment;
 use App\Models\Doctor;
 use App\Models\Prescription;
+use App\Services\PrivatePrescriptionStorage;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
@@ -53,7 +54,7 @@ class PatientMedicalFileController extends Controller
         // Restrict names to server-generated PDFs; never accept request paths,
         // user-provided filenames, traversal sequences or arbitrary extensions.
         abort_unless(
-            preg_match('/\A[a-zA-Z0-9_-]{16,80}\.pdf\z/D', $name) === 1,
+            PrivatePrescriptionStorage::isPrivateFilename($name),
             404
         );
 
