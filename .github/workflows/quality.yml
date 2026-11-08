@@ -39,6 +39,11 @@ jobs:
         run: |
           php -l app/Http/Middleware/EnsureApprovedProfessional.php
           php tools/test_approved_professional_guard_contract.php
+      - name: Pending provider and suspended doctor Firebase access gate
+        run: |
+          php -l app/Http/Controllers/ProviderApiController.php
+          php -l tools/test_professional_firebase_gate_contract.php
+          php tools/test_professional_firebase_gate_contract.php
       - name: Private medical authorization and storage source contract
         run: php tools/test_private_medical_download_contract.php
       - name: Private prescription write cutoff source contract (opt-in)
