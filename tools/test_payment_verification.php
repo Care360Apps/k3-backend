@@ -2,6 +2,28 @@
 // Runs the real payment service against isolated fake transports/models.
 // No Composer, database, credentials, or external HTTP requests are used.
 namespace App\Models {
+    /**
+     * Shared no-database ledger for all fake Care360 payment product tables.
+     */
+    class SyntheticReceiptTable {
+        public static bool $duplicate = false;
+        public static array $claimed = [];
+        private string $token = '';
+
+        public static function where($column, $token): self {
+            if ($column !== 'payment_token') throw new \RuntimeException('Unexpected query.');
+            $instance = new static;
+            $instance->token = (string) $token;
+            return $instance;
+        }
+        public function exists(): bool {
+            return self::$duplicate || (self::$claimed[static::class][$this->token] ?? false);
+        }
+    }
+    class Appointment extends SyntheticReceiptTable {}
+    class PurchaseMedicine extends SyntheticReceiptTable {}
+    class Report extends SyntheticReceiptTable {}
+    class DoctorSubscription extends SyntheticReceiptTable {}
     class Setting {
         public string $currency_code = 'NGN';
         public string $stripe_secret_key = 'synthetic';
@@ -61,11 +83,7 @@ namespace {
         }
         return $data;
     }
-    class FakeOrder {
-        public static bool $duplicate = false;
-        public static function where($column, $token): self { return new self; }
-        public function exists(): bool { return self::$duplicate; }
-    }
+    class FakeOrder extends \App\Models\SyntheticReceiptTable {}
     require __DIR__.'/../app/Services/PaymentGatewayService.php';
     $GLOBALS['gatewaySecret'] = 'synthetic';
     $passed = 0;
@@ -104,6 +122,19 @@ namespace {
     FakeOrder::$duplicate = true;
     checkCase('existing order payment token rejected', 'STRIPE', 'pi_1', false);
     FakeOrder::$duplicate = false;
+
+    \App\Models\SyntheticReceiptTable::$claimed[\App\Models\Appointment::class]['pi_1'] = true;
+    checkCase('payment reference on appointment cannot be reused for another Care360 service', 'STRIPE', 'pi_1', false);
+    unset(\App\Models\SyntheticReceiptTable::$claimed[\App\Models\Appointment::class]['pi_1']);
+    \App\Models\SyntheticReceiptTable::$claimed[\App\Models\PurchaseMedicine::class]['pi_1'] = true;
+    checkCase('medicine receipt cannot pay second order', 'STRIPE', 'pi_1', false);
+    unset(\App\Models\SyntheticReceiptTable::$claimed[\App\Models\PurchaseMedicine::class]['pi_1']);
+    \App\Models\SyntheticReceiptTable::$claimed[\App\Models\Report::class]['pi_1'] = true;
+    checkCase('lab receipt cannot be replayed', 'STRIPE', 'pi_1', false);
+    unset(\App\Models\SyntheticReceiptTable::$claimed[\App\Models\Report::class]['pi_1']);
+    \App\Models\SyntheticReceiptTable::$claimed[\App\Models\DoctorSubscription::class]['pi_1'] = true;
+    checkCase('subscription receipt cannot be replayed', 'STRIPE', 'pi_1', false);
+    unset(\App\Models\SyntheticReceiptTable::$claimed[\App\Models\DoctorSubscription::class]['pi_1']);
 
     Http::$payload = ['id'=>'PAYID-1','state'=>'approved','transactions'=>[
         ['amount'=>['total'=>'100.00','currency'=>'NGN']]]];
