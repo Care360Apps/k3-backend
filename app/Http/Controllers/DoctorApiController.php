@@ -25,6 +25,7 @@ use App\Models\User;
 use App\Models\WorkingHour;
 use App\Services\FirebaseTokenService;
 use App\Services\DoctorDocumentService;
+use App\Services\PrivatePrescriptionStorage;
 use App\Services\PaymentGatewayService;
 use Berkayk\OneSignal\OneSignalClient;
 use Carbon\Carbon;
@@ -332,7 +333,7 @@ class DoctorApiController extends Controller
         $appointment['pdf'] = '';
         if (Prescription::where('appointment_id', $id)->exists()) {
             $pdf = Prescription::where('appointment_id', $id)->first()->pdf;
-            $appointment['pdf'] = url('prescription/upload').'/'.$pdf;
+            $appointment['pdf'] = PrivatePrescriptionStorage::appointmentUrl((int) $id, $pdf);
         }
 
         return response(['success' => true, 'data' => $appointment, 'msg' => 'Doctor Today appointment']);
@@ -351,7 +352,7 @@ class DoctorApiController extends Controller
             'appointment_id' => 'bail|required',
             'medicines' => 'bail|required',
             'user_id' => 'bail|required',
-            // 'pdf' => 'bail|required'
+            'pdf' => 'bail|nullable|file|mimes:pdf|max:10240'
         ]);
         $data = $request->all();
         $ownAppointment = Appointment::where('id', $data['appointment_id'])->where('doctor_id', $this->ownDoctorId())->first();
@@ -372,11 +373,30 @@ class DoctorApiController extends Controller
         $pre['appointment_id'] = $data['appointment_id'];
         $pre['doctor_id'] = Doctor::where('user_id', auth()->user()->id)->first()->id;
         $pre['user_id'] = $data['user_id'];
-        if (isset($data['pdf'])) {
-            $pre['pdf'] = (new CustomController)->safeUpload($data['pdf'], public_path().'/prescription/upload', ['pdf']);
+        $privateFilename = null;
+        $privateStore = new PrivatePrescriptionStorage();
+        if ($request->hasFile('pdf')) {
+            if (PrivatePrescriptionStorage::enabled()) {
+                $privateFilename = $privateStore->store($request->file('pdf'));
+                $pre['pdf'] = $privateFilename;
+            } else {
+                // Backward-compatible until both apps can authorize file reads.
+                $pre['pdf'] = (new CustomController)->safeUpload(
+                    $request->file('pdf'), public_path().'/prescription/upload', ['pdf']
+                );
+            }
         }
-        $pres = Prescription::create($pre);
-        $pdf = url('prescription/upload/'.$pres->pdf);
+        try {
+            $pres = Prescription::create($pre);
+        } catch (\Throwable $error) {
+            if ($privateFilename !== null) {
+                $privateStore->discard($privateFilename);
+            }
+            throw $error;
+        }
+        $pdf = PrivatePrescriptionStorage::appointmentUrl(
+            (int) $pres->appointment_id, $pres->pdf
+        );
 
         return response(['success' => true, 'data' => $pdf, 'msg' => 'Prescription Created']);
     }
