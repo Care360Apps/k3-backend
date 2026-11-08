@@ -1166,35 +1166,55 @@ class UserApiController extends Controller
     public function apiCompleteAppointment(Request $request)
     {
         (new CustomController)->cancel_max_order();
-        $request->validate([
-            'appointment_id' => 'bail|required|integer',
+        $validated = $request->validate([
+            'appointment_id' => 'bail|required|integer|min:1',
         ]);
-        $appointment = Appointment::where('id', $request->appointment_id)->where('user_id', auth()->user()->id)->first();
-        if (! $appointment) {
+        // Patient and professional close endpoints must serialize on the same
+        // appointment row to prevent concurrent double settlement.
+        $result = DB::transaction(function () use ($validated) {
+            $appointment = Appointment::where('id', $validated['appointment_id'])
+                ->where('user_id', auth()->id())->lockForUpdate()->first();
+            if (! $appointment) {
+                return null;
+            }
+            if (in_array(strtolower((string) $appointment->appointment_status),
+                ['complete', 'completed', 'cancel', 'canceled', 'cancelled'], true)) {
+                return false;
+            }
+            $appointment->update(['appointment_status' => 'complete']);
+            $doctor = Doctor::find($appointment->doctor_id);
+            if ($doctor && $doctor->based_on === 'commission') {
+                // A patient completing an appointment does NOT prove payment:
+                // only gateway verification may set the paid settlement flag.
+                Settle::firstOrCreate(
+                    ['appointment_id' => $appointment->id],
+                    [
+                        'doctor_id' => $appointment->doctor_id,
+                        'doctor_amount' => $appointment->doctor_commission,
+                        'admin_amount' => $appointment->admin_commission,
+                        'payment' => $appointment->payment_type !== 'COD'
+                            && (int) $appointment->payment_status === 1 ? 1 : 0,
+                        'doctor_status' => 0,
+                    ]
+                );
+            }
+            return $appointment;
+        });
+        if ($result === null) {
             return response(['success' => false, 'msg' => 'Appointment not found'], 404);
         }
-        if (in_array(strtolower($appointment->appointment_status ?? ''), ['complete', 'completed', 'cancel'])) {
+        if ($result === false) {
             return response(['success' => false, 'msg' => 'Appointment already closed'], 422);
         }
-        // Completing a consultation is NOT evidence that money was received.
-        // PaymentGatewayService alone may confirm a paid transaction.
-        $appointment->update(['appointment_status' => 'complete']);
-        $user = User::find($appointment->user_id);
-        $doctor = Doctor::find($appointment->doctor_id);
-        if ($doctor && $doctor->based_on == 'commission') {
-            $settle = [];
-            $settle['appointment_id'] = $appointment->id;
-            $settle['doctor_id'] = $appointment->doctor_id;
-            $settle['doctor_amount'] = $appointment->doctor_commission;
-            $settle['admin_amount'] = $appointment->admin_commission;
-            // Never mark a settlement paid merely because a non-COD gateway
-            // was selected. The underlying payment must already be verified.
-            $settle['payment'] = $appointment->payment_type !== 'COD'
-                && (int) $appointment->payment_status === 1 ? 1 : 0;
-            $settle['doctor_status'] = 0;
-            Settle::create($settle);
+        try {
+            (new CustomController)->statusChangeNotification(
+                User::find($result->user_id), $result, 'complete'
+            );
+        } catch (\Throwable $error) {
+            // Do not leak patient details or roll back a committed clinical
+            // transition just because a third-party push provider is down.
+            logger()->warning('Patient appointment completion notification failed.');
         }
-        (new CustomController)->statusChangeNotification($user, $appointment, 'complete');
 
         return response(['success' => true, 'msg' => 'Appointment completed']);
     }
