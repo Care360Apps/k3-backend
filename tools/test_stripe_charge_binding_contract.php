@@ -18,7 +18,7 @@ $checks = [
         str_contains($gateway, "(string) (\$charge->metadata['user_id'] ?? '') === (string) \$userId"),
     'Stripe intent must match authenticated user and currency' =>
         str_contains($gateway, "(string) (\$intent->metadata['user_id'] ?? '') === (string) \$userId")
-        && str_contains($gateway, '\$this->sameCurrency('),
+        && str_contains($gateway, '$this->sameCurrency('),
     'Raw Stripe exception messages cannot be logged' =>
         ! str_contains($controller, "\$e->getMessage()")
         && str_contains($controller, "Stripe payment intent creation failed."),
