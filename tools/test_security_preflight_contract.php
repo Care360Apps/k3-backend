@@ -10,7 +10,7 @@ foreach ([
     "config('app.url')",
     'realpath(public_path())',
     "storage_path('app')",
-    "fileperms($file)",
+    'fileperms($file)',
     'privateKeyPermissions',
     'NOT VERIFIED HERE:',
 ] as $expected) {
