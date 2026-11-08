@@ -29,6 +29,7 @@ class ApprovedProfessionalAccessTest extends TestCase
             $table->string('name')->nullable();
             $table->string('email')->nullable();
             $table->string('password')->nullable();
+            $table->boolean('status')->default(true);
         });
         Schema::create('roles', function (Blueprint $table) {
             $table->id();
@@ -103,6 +104,21 @@ class ApprovedProfessionalAccessTest extends TestCase
                 ->get('/__synthetic_professional_guard')->assertForbidden();
         }
         DB::table('doctor')->where('id', 203)->update(['status' => 0]);
+        $this->actingAs(User::findOrFail(103), 'api')
+            ->get('/__synthetic_professional_guard')->assertForbidden();
+    }
+
+    public function test_suspended_professional_user_is_rejected_even_with_existing_auth(): void
+    {
+        $doctor = User::findOrFail(101);
+        $this->actingAs($doctor, 'api')
+            ->get('/__synthetic_professional_guard')->assertOk();
+
+        DB::table('users')->where('id', 101)->update(['status' => 0]);
+        $this->actingAs(User::findOrFail(101), 'api')
+            ->get('/__synthetic_professional_guard')->assertForbidden();
+
+        DB::table('users')->where('id', 103)->update(['status' => 0]);
         $this->actingAs(User::findOrFail(103), 'api')
             ->get('/__synthetic_professional_guard')->assertForbidden();
     }
