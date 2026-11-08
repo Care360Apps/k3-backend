@@ -195,9 +195,12 @@ class StageLegacyPrescriptions extends Command
             return null;
         }
         $root = realpath(public_path('prescription/upload'));
+        $publicRoot = realpath(public_path());
         $path = public_path('prescription/upload/'.$filename);
         $resolved = realpath($path);
-        if ($root === false || $resolved === false
+        if ($root === false || $resolved === false || $publicRoot === false
+            || is_link(public_path('prescription/upload'))
+            || ! str_starts_with($root, $publicRoot.DIRECTORY_SEPARATOR)
             || ! str_starts_with($resolved, $root.DIRECTORY_SEPARATOR)
             || is_link($path) || ! is_file($path)) {
             return null;
