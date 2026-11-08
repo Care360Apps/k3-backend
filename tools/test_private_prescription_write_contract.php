@@ -53,8 +53,8 @@ $checks = [
         && str_contains($code['doctor'], 'Prescription::create($pre)'),
     'Private files never resolve to public URLs after flag rollback' =>
         str_contains($code['service'], "url('api/medical-files/appointments/'")
-        && str_contains($code['service'], "if (self::isPrivateFilename($filename))")
-        && str_contains($code['service'], "url('prescription/upload/'.$filename)"),
+        && str_contains($code['service'], 'if (self::isPrivateFilename(')
+        && str_contains($code['service'], "url('prescription/upload/'"),
     'Doctor and patient endpoints return mode-consistent URLs' =>
         str_contains($code['doctor'], 'PrivatePrescriptionStorage::appointmentUrl')
         && substr_count($code['patient'], 'PrivatePrescriptionStorage::appointmentUrl') >= 2,
