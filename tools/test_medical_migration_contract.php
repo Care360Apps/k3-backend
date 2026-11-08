@@ -47,7 +47,7 @@ $checks = [
         && str_contains($contents['doctor'], "'medicines' => 'bail|required|json'")
         && str_contains($contents['doctor'], "count($"."decoded) > 50"),
     'Private prescription download excludes unapproved providers' =>
-        str_contains($contents['download'], "where('user_role', '!=', 'provider')"),
+        str_contains($contents['download'], "orWhere('user_role', '!=', 'provider')"),
     'Synthetic integration tests include round-trip, dry-run and invalid PDF' =>
         str_contains($contents['feature'], "test_copy_update_and_rollback_preserve_original")
         && str_contains($contents['feature'], "test_dry_run_never_changes_records")
