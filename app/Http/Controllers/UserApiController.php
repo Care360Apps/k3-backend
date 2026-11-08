@@ -14,6 +14,7 @@ use App\Services\MedicineStockGuard;
 use App\Services\PharmacyCommission;
 use App\Services\OtpService;
 use App\Services\PaymentGatewayService;
+use App\Services\PaymentReceiptClaimService;
 use App\Services\PrivatePrescriptionStorage;
 use App\Models\Appointment;
 use App\Models\Banner;
@@ -636,10 +637,19 @@ class UserApiController extends Controller
         // DB columns are NOT NULL; ensure we never pass null for provider bookings
         $data['illness_information'] = $data['illness_information'] ?? '';
         $data['drug_effect'] = $data['drug_effect'] ?? '';
-        $appointment = Appointment::create($data);
-        if ($offer) {
-            $offer->increment('use_count');
-        }
+        // Claim a verified receipt atomically with appointment creation. If a
+        // concurrent request wins the unique receipt index, the order and
+        // offer-use increment roll back together.
+        $appointment = DB::transaction(function () use ($data, $offer) {
+            $created = Appointment::create($data);
+            (new PaymentReceiptClaimService())->claim(
+                $data, 'appointment', (int) $created->id, (int) $created->user_id
+            );
+            if ($offer) {
+                $offer->increment('use_count');
+            }
+            return $created;
+        });
 
         $setting = Setting::first();
         // doctor booked appointment
@@ -1016,19 +1026,24 @@ class UserApiController extends Controller
         $data = $this->resolvePayment($data, Report::class);
         unset($data['upload_report']);
 
-        $report = Report::create($data);
-
-        $com = $lab->commission * $data['amount'];
-        $admin_commission = $com / 100;
-        $lab_commission = $data['amount'] - $admin_commission;
-        $settle = [];
-        $settle['lab_id'] = $lab->id;
-        $settle['report_id'] = $report->id;
-        $settle['admin_amount'] = $admin_commission;
-        $settle['lab_amount'] = $lab_commission;
-        $settle['payment'] = $report->payment_status == 1 ? 1 : 0;
-        $settle['lab_status'] = 0;
-        LabSettle::create($settle);
+        $report = DB::transaction(function () use ($data, $lab) {
+            $created = Report::create($data);
+            (new PaymentReceiptClaimService())->claim(
+                $data, 'lab', (int) $created->id, (int) $created->user_id
+            );
+            $com = $lab->commission * $data['amount'];
+            $admin_commission = $com / 100;
+            $lab_commission = $data['amount'] - $admin_commission;
+            LabSettle::create([
+                'lab_id' => $lab->id,
+                'report_id' => $created->id,
+                'admin_amount' => $admin_commission,
+                'lab_amount' => $lab_commission,
+                'payment' => (int) $created->payment_status === 1 ? 1 : 0,
+                'lab_status' => 0,
+            ]);
+            return $created;
+        });
 
         return response(['success' => true, 'msg' => 'Lab booked', 'data' => $report]);
     }
@@ -1098,6 +1113,9 @@ class UserApiController extends Controller
 
         DB::transaction(function () use ($data, $order) {
             $purchase = PurchaseMedicine::create($data);
+            (new PaymentReceiptClaimService())->claim(
+                $data, 'medicine', (int) $purchase->id, (int) $purchase->user_id
+            );
             foreach ($order['lines'] as $line) {
                 MedicineChild::create([
                     'purchase_medicine_id' => $purchase->id,
