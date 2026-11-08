@@ -150,7 +150,10 @@ class PaymentGatewayService
             $ok = $charge->status === 'succeeded'
                 && ! $charge->refunded
                 && strtolower($charge->currency) === strtolower($this->setting->currency_code)
-                && $charge->amount >= $this->toMinorUnits($amount);
+                && $charge->amount >= $this->toMinorUnits($amount)
+                // Legacy Stripe charge references are reusable identifiers;
+                // reject unbound receipts rather than mark another user's order paid.
+                && (string) ($charge->metadata['user_id'] ?? '') === (string) $userId;
             if (! $ok) {
                 $this->fail();
             }
