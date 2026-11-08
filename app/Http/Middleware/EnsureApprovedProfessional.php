@@ -22,6 +22,11 @@ final class EnsureApprovedProfessional
             return response()->json(['success' => false, 'code' => 'PROFESSIONAL_ACCESS_DENIED'], 403);
         }
 
+        // A previously issued Passport token must not outlive account suspension.
+        if ((int) $user->status !== 1) {
+            return response()->json(['success' => false, 'code' => 'PROFESSIONAL_ACCESS_DENIED'], 403);
+        }
+
         $professional = Doctor::query()
             ->where('user_id', $user->id)
             ->where('is_approved', 1)
