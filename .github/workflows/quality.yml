@@ -35,6 +35,8 @@ jobs:
         run: php tools/test_payment_completion_contract.php
       - name: Private medical authorization and storage source contract
         run: php tools/test_private_medical_download_contract.php
+      - name: Private prescription write cutoff source contract (opt-in)
+        run: php tools/test_private_prescription_write_contract.php
       - name: Provider approval and valid proximity discovery
         run: php tools/test_provider_discovery_contract.php
       - name: Opt-in Nearby Care shift and location privacy safety
