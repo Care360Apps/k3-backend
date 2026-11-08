@@ -3,6 +3,10 @@
 namespace App\Services;
 
 use App\Models\Setting;
+use App\Models\Appointment;
+use App\Models\DoctorSubscription;
+use App\Models\PurchaseMedicine;
+use App\Models\Report;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Validation\ValidationException;
@@ -120,13 +124,35 @@ class PaymentGatewayService
             info("{$type} payment verification failed.");
             $this->fail();
         }
-        if ($modelClass::where('payment_token', $verifiedToken)->exists()) {
+        if ($this->usedAcrossCare360Services($verifiedToken)) {
+            // A receipt may settle at most one product across Care360.
             $this->fail();
         }
         $data['payment_token'] = $verifiedToken;
         $data['payment_status'] = 1;
 
         return $data;
+    }
+
+    /**
+     * Reject sequential cross-product receipt reuse. This check is not an
+     * atomic unique claim: concurrent transactions still need a unique
+     * persistent receipt ledger before production release.
+     */
+    private function usedAcrossCare360Services(string $verifiedToken): bool
+    {
+        foreach ([
+            Appointment::class,
+            PurchaseMedicine::class,
+            Report::class,
+            DoctorSubscription::class,
+        ] as $model) {
+            if ($model::where('payment_token', $verifiedToken)->exists()) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function verifyStripe(string $token, float $amount, int $userId): string
