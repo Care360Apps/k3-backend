@@ -43,6 +43,13 @@ jobs:
           php tools/test_private_prescription_urls_runtime.php
       - name: Read-only runtime configuration preflight source guard
         run: php tools/test_security_preflight_contract.php
+      - name: Reversible synthetic medical-file staging and payment safety gates
+        run: |
+          php -l app/Console/Commands/StageLegacyPrescriptions.php
+          php -l database/migrations/2026_11_08_060000_create_medical_prescription_migration_ledger.php
+          php -l tests/Feature/LegacyPrescriptionStagingTest.php
+          php tools/test_medical_migration_contract.php
+          php tools/test_stripe_charge_binding_contract.php
       - name: Provider approval and valid proximity discovery
         run: php tools/test_provider_discovery_contract.php
       - name: Opt-in Nearby Care shift and location privacy safety
