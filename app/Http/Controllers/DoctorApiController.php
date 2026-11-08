@@ -358,7 +358,7 @@ class DoctorApiController extends Controller
         $request->validate([
             'appointment_id' => 'bail|required',
             'medicines' => 'bail|required|json',
-            'user_id' => 'bail|required|integer',
+            'user_id' => 'sometimes|integer',
             'pdf' => 'bail|nullable|file|mimes:pdf|max:10240'
         ]);
         $data = $request->all();
