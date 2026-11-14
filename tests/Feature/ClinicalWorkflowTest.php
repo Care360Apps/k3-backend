@@ -5,6 +5,8 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\{DB,Schema};
 use Tests\TestCase;
 class ClinicalWorkflowTest extends TestCase {
+    use \Tests\Support\SeedsWebLocalization;
+
  private string $fixtureStorage;
  private string $originalStorage;
  protected function setUp(): void {
@@ -14,6 +16,7 @@ class ClinicalWorkflowTest extends TestCase {
   config()->set('database.connections.sqlite.database',':memory:');
   config()->set('app.key','base64:'.base64_encode(str_repeat('q',32)));
   DB::purge('sqlite');DB::setDefaultConnection('sqlite');
+  $this->seedWebLocalization();
   Schema::create('users',function(Blueprint $t){$t->id();$t->string('name');$t->string('email');$t->boolean('status')->default(1);});
   Schema::create('roles',function(Blueprint $t){$t->id();$t->string('name');$t->string('guard_name');$t->timestamps();});
   Schema::create('model_has_roles',function(Blueprint $t){$t->integer('role_id');$t->string('model_type');$t->integer('model_id');});

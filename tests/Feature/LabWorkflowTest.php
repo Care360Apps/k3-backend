@@ -6,8 +6,11 @@ use App\Services\LabWorkflowService;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\{DB,Schema};
 class LabWorkflowTest extends TestCase {
+    use \Tests\Support\SeedsWebLocalization;
+
  protected function setUp():void {
   parent::setUp();config(['database.default'=>'sqlite','database.connections.sqlite.database'=>':memory:','app.key'=>'base64:'.base64_encode(str_repeat('l',32))]);DB::purge('sqlite');
+  $this->seedWebLocalization();
   Schema::create('users',function(Blueprint $t){$t->id();$t->string('name');$t->string('email');});
   Schema::create('report',function(Blueprint $t){$t->id();$t->string('report_id');$t->integer('lab_id');$t->integer('user_id');$t->string('date');$t->timestamps();});
   (require database_path('migrations/2026_11_09_000001_add_lab_result_workflow.php'))->up();

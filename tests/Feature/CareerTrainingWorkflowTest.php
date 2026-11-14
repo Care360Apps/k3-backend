@@ -13,6 +13,8 @@ use Tests\TestCase;
 
 class CareerTrainingWorkflowTest extends TestCase
 {
+    use \Tests\Support\SeedsWebLocalization;
+
     protected function getEnvironmentSetUp($app): void
     {
         $app['config']->set('cache.default', 'array');
@@ -44,6 +46,7 @@ class CareerTrainingWorkflowTest extends TestCase
             '2026_11_14_000000_add_workforce_notice_consent.php', '2026_11_14_000001_create_career_and_training_workflows.php'] as $m) {
             (require database_path('migrations/'.$m))->up();
         }
+        $this->seedWebLocalization();
         Schema::create('users', function (Blueprint $t) {
             $t->id();
             $t->string('name');

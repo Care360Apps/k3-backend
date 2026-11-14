@@ -7,6 +7,8 @@ use Tests\TestCase;
 
 class WorkforcePilotTest extends TestCase
 {
+    use \Tests\Support\SeedsWebLocalization;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -19,6 +21,7 @@ class WorkforcePilotTest extends TestCase
         config()->set('workforce.enabled', true);
         config()->set('workforce.notice_approved',true);config()->set('workforce.notice_url','https://care360apps.com/recruitment-privacy');config()->set('workforce.notice_version','synthetic-v1');
         DB::purge('sqlite');
+  $this->seedWebLocalization();
         $migration = require database_path(
             'migrations/2026_11_07_230000_create_workforce_pilot_tables.php'
         );
