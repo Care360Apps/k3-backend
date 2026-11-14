@@ -91,4 +91,24 @@ class PrivatePrescriptionWriteTest extends TestCase
             $this->syntheticUpload('not actually a PDF')
         );
     }
+
+    public function test_storage_inside_the_public_root_is_rejected(): void
+    {
+        $originalStorage = storage_path();
+        $testRoot = public_path('k3-private-storage-test-'.bin2hex(random_bytes(6)));
+        mkdir($testRoot.'/app', 0700, true);
+        $this->app->useStoragePath($testRoot);
+        try {
+            (new PrivatePrescriptionStorage())->store($this->syntheticUpload(
+                "%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF\n"
+            ));
+            $this->fail('A public storage root must never accept a clinical PDF.');
+        } catch (\RuntimeException $error) {
+            $this->assertSame('Private storage root is not isolated.', $error->getMessage());
+        } finally {
+            $this->app->useStoragePath($originalStorage);
+            rmdir($testRoot.'/app');
+            rmdir($testRoot);
+        }
+    }
 }

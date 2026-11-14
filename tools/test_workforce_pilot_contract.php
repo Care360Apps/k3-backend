@@ -8,6 +8,7 @@
 $root = dirname(__DIR__);
 $files = [
     'api' => 'routes/api.php',
+    'career' => 'app/Services/CareerWorkflow.php',
     'controller' => 'app/Http/Controllers/WorkforcePilotController.php',
     'middleware' => 'app/Http/Middleware/AuthenticateWorkforce.php',
     'feature' => 'app/Http/Middleware/WorkforcePilotEnabled.php',
@@ -36,7 +37,10 @@ $checks = [
         "'verification_status', 'verified'")
         && !str_contains($code['controller'], "['verification_status'] ="),
     'Employer must be approved before browsing' => str_contains($code['controller'],
-        "verification_status !== 'verified'"),
+        "CareerWorkflow::employer(\$actor)")
+        && str_contains($code['career'], "verification_status === 'verified'")
+        && str_contains($code['career'], "where('status', 'accepted')")
+        && str_contains($code['career'], "return self::owner("),
     'Opt-in required for candidate visibility' => str_contains($code['controller'],
         "->where('available_for_work', true)")
         && str_contains($code['controller'], "->where('consent_to_list', true)"),

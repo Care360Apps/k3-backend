@@ -18,7 +18,7 @@ class DoctorNoteController extends Controller
             abort(403, 'Only approved medical doctors may access clinical notes.');
         }
         $doctor = Doctor::where('user_id', $user->id)
-            ->where('user_role', 'doctor')
+            ->where(fn ($query) => $query->where('user_role', 'doctor')->orWhereNull('user_role'))
             ->where('is_approved', 1)
             ->where('status', 1)
             ->first();

@@ -20,6 +20,7 @@ $sources = [
 $code = [];
 foreach ($sources as $label => $file) {
     $code[$label] = file_get_contents($root.'/'.$file);
+    if (is_string($code[$label])) $code[$label] = str_replace("\r\n", "\n", $code[$label]);
     if (! is_string($code[$label])) {
         fwrite(STDERR, "FAIL: missing receipt source: $label\n"); exit(1);
     }

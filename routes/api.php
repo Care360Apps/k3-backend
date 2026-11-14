@@ -38,23 +38,28 @@ Route::post('/ai/guide', [Care360AiGuideController::class, 'guide'])
 // A separate recruitment authorization boundary. These tokens NEVER use
 // Passport's clinical auth:api guard and cannot access appointments/records.
 // Entire feature defaults OFF until security and credential reviews complete.
+Route::middleware([\App\Http\Middleware\CareerSafeErrors::class])->group(function(){
 Route::get('/workforce/v1/status', [WorkforcePilotController::class, 'status'])
-    ->middleware('throttle:15,1');
+    ->middleware('throttle:15,1,workforce-status');
+// Existing identities retain privacy access even when new registrations close.
+Route::post('workforce/v1/login',[WorkforcePilotController::class,'login'])->middleware('throttle:5,1,workforce-login');
 Route::prefix('workforce/v1')->middleware([WorkforcePilotEnabled::class])->group(function () {
     Route::post('register', [WorkforcePilotController::class, 'register'])
-        ->middleware('throttle:5,1');
-    Route::post('login', [WorkforcePilotController::class, 'login'])
-        ->middleware('throttle:5,1');
+        ->middleware('throttle:5,1,workforce-register');
+
     Route::middleware([AuthenticateWorkforce::class])->group(function () {
         Route::get('me', [WorkforcePilotController::class, 'me']);
+        Route::post('consent',[WorkforcePilotController::class,'consent'])->middleware('throttle:5,1,career-consent');
         Route::post('candidate/profile', [WorkforcePilotController::class, 'candidateProfile'])
-            ->middleware('throttle:20,1');
+            ->middleware(['throttle:20,1,workforce-profile',\App\Http\Middleware\CareerNoticeConsent::class]);
         Route::post('employer/profile', [WorkforcePilotController::class, 'employerProfile'])
-            ->middleware('throttle:20,1');
+            ->middleware(['throttle:20,1,workforce-profile',\App\Http\Middleware\CareerNoticeConsent::class]);
         Route::get('candidates', [WorkforcePilotController::class, 'candidates'])
-            ->middleware('throttle:20,1');
+            ->middleware(['throttle:20,1,workforce-profile',\App\Http\Middleware\CareerNoticeConsent::class]);
         Route::post('logout', [WorkforcePilotController::class, 'logout']);
     });
+});
+
 });
 
 // Onesignal Notification Test, Only for Developers.
@@ -200,3 +205,23 @@ Route::middleware('auth:api')->group(function () {
     Route::post('/generateDoctorAgoraToken',[DoctorApiController::class, 'apiDoctorGenerateToken'])->middleware(EnsureApprovedProfessional::class);
     Route::post('/send_message_to_patient_notification', [DoctorApiController::class, 'apiSendMessageToPatientNotificationTrigger'])->middleware('throttle:10,1')->middleware(EnsureApprovedProfessional::class);
 });
+
+Route::middleware('auth:api')->group(function () {
+    Route::get('patient/lab-results', [\App\Http\Controllers\PatientLabResultController::class,'index']);
+    Route::get('patient/lab-results/{reportId}/file', [\App\Http\Controllers\PatientLabResultController::class,'download'])->whereNumber('reportId');
+});
+
+Route::prefix('clinical')->middleware(['auth:api', EnsureApprovedProfessional::class])->group(function () {
+    $controller = \App\Http\Controllers\ClinicalWorkflowController::class;
+    Route::get('encounters', [$controller,'encounters'])->middleware('throttle:60,1');
+    Route::get('appointments/{id}', [$controller,'workspace'])->whereNumber('id');
+    Route::post('appointments/{id}/observations', [$controller,'observe'])->whereNumber('id')->middleware('throttle:30,1');
+    Route::post('appointments/{id}/orders', [$controller,'order'])->whereNumber('id')->middleware('throttle:30,1');
+    Route::post('orders/{id}/status', [$controller,'transition'])->whereNumber('id')->middleware('throttle:30,1');
+    Route::get('orders/{id}/result', [$controller,'result'])->whereNumber('id');
+    Route::get('critical-results', [$controller,'criticalInbox']);
+    Route::post('critical-results/{id}/acknowledge', [$controller,'acknowledge'])->whereNumber('id')->middleware('throttle:30,1');
+});
+
+// Career and CNU training workflows have independent rollout and account guards.
+require __DIR__.'/career.php';

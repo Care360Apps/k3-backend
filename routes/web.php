@@ -63,6 +63,23 @@ Auth::routes();
 Route::any('installer', [AdminController::class, 'installer']);
 
 Route::middleware(['auth'])->group(function () {
+    Route::prefix('career/manage')->middleware([\App\Http\Middleware\CareerSafeErrors::class])->group(function(){
+        $c=\App\Http\Controllers\CareerAdministrationController::class;
+        Route::get('/',[$c,'index'])->name('career.manage');
+        Route::post('privacy/{id}',[$c,'fulfillPrivacy'])->whereNumber('id');
+        Route::post('recruiters/{id}',[$c,'reviewRecruiter'])->whereNumber('id');
+        Route::post('reports/{id}',[$c,'resolveReport'])->whereNumber('id');
+        Route::post('jobs/{id}',[$c,'moderateJob'])->whereNumber('id');
+        Route::post('documents/{id}',[$c,'reviewDocument'])->whereNumber('id');
+        Route::get('documents/{id}',[$c,'downloadDocument'])->whereNumber('id');
+        Route::post('courses',[$c,'saveCourse']);
+        Route::post('courses/{id}/publish',[$c,'publishCourse'])->whereNumber('id');
+        Route::post('enrollments/{id}',[$c,'enrollment'])->whereNumber('id');
+        Route::post('enrollments/{id}/certificate',[$c,'certificate'])->whereNumber('id');
+        Route::post('requests/{id}',[$c,'organizationRequest'])->whereNumber('id');
+    });
+    Route::get('workforce/review', [\App\Http\Controllers\WorkforceReviewController::class, 'index'])->name('workforce.review');
+    Route::post('workforce/review', [\App\Http\Controllers\WorkforceReviewController::class, 'store'])->middleware('throttle:30,1');
     Route::get('/spatie-cache-clear', function () {
         abort_unless(auth()->user()->hasRole('super admin'), 403);
         Artisan::call('cache:forget spatie.permission.cache');
@@ -211,7 +228,13 @@ Route::group(['middleware' => ['XssSanitizer']], function () {
         Route::get('/login-as-patient/{id}', [AdminController::class, 'loginAsPatient'])->name('loginAsPatient');
         Route::get('/logout-user/{id}', [AdminController::class, 'logoutUser'])->name('logoutUser');
 
+        Route::get('lab_clinical_requests', [\App\Http\Controllers\ClinicalWorkflowController::class,'labIndex']);
+        Route::post('lab_clinical_requests/link', [\App\Http\Controllers\ClinicalWorkflowController::class,'link']);
+        Route::post('lab_clinical_requests/contact', [\App\Http\Controllers\ClinicalWorkflowController::class,'contact']);
+        Route::post('lab_clinical_requests/critical', [\App\Http\Controllers\ClinicalWorkflowController::class,'flag']);
         Route::get('test_reports', [LabController::class, 'test_reports']);
+        Route::post('lab_results/status', [LabController::class, 'advanceResult']);
+        Route::get('lab_results/{reportId}/file', [LabController::class, 'downloadResult'])->whereNumber('reportId');
         Route::post('upload_report', [LabController::class, 'upload_report']);
 
         // pharmacy commission

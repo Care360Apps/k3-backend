@@ -65,11 +65,13 @@ class DoctorApiController extends Controller
                         return response(['success' => false, 'msg' => 'You are blocked please contact to admin.'], 403);
                     }
                     // Pending applicants can complete onboarding, but are not given Firebase chat credentials.
-                    $userDoctor['approval_status'] = (int) $doctor->is_approved === 1 ? 'approved' : 'pending';
                     if (isset($request->device_token)) {
                         $userDoctor->device_token = $request->device_token;
                         $userDoctor->save();
                     }
+                    // Response-only fields must be added after persistent updates.
+                    // approval_status belongs to the doctor profile, not users.
+                    $userDoctor['approval_status'] = $doctor && (int) ($doctor->is_approved ?? 0) === 1 ? 'approved' : 'pending';
                     $userDoctor['is_filled'] = $doctor->is_filled;
                     $firebaseToken = (int) $doctor->is_approved === 1
                         ? (new FirebaseTokenService())->doctorToken($userDoctor->id)
@@ -655,7 +657,7 @@ class DoctorApiController extends Controller
     public function apiAppointmentHistory()
     {
         (new CustomController)->cancel_max_order();
-        $doctor = Doctor::with('treatment:id,name')->where('user_id', auth()->user()->id)->first();
+        $doctor = Doctor::with('treatment:id,name')->where('user_id', auth()->user()->id)->firstOrFail();
         $future = [];
         $past = [];
         $appointments = Appointment::with(['user:id,image', 'hospital:id,name,address'])->where('doctor_id', $doctor->id)->orderBy('id', 'DESC')->get(['id', 'date', 'time', 'end_time', 'duration_minutes', 'user_id', 'hospital_id', 'patient_address', 'patient_name', 'appointment_status', 'visit_type']);
@@ -665,7 +667,7 @@ class DoctorApiController extends Controller
                 $appointment['hospital'] = (object) [];
                 $appointment['hospital_id'] = 0;
             }
-            $appointment->treatment = $doctor->treatment['name'];
+            $appointment->treatment = $doctor->treatment?->name ?? '';
             $appointment->doctor_name = $doctor->name;
             $appointment->timming = new DateTime($appointment['date'].$appointment['time']);
             if ($appointment->timming >= Carbon::now(env('timezone')) && $appointment->appointment_status != 'completed' && $appointment->appointment_status != 'canceled') {

@@ -20,7 +20,7 @@ foreach ([
     'str_starts_with($full, $base.DIRECTORY_SEPARATOR)',
     "Cache-Control' => 'private, no-store",
     'whereKey($appointment->doctor_id)',
-    "preg_match(",
+    'PrivatePrescriptionStorage::isPrivateFilename($name)',
     "storage_path('app/private/medical/prescriptions')",
 ] as $requirement) {
     if (! str_contains($controller, $requirement)) {

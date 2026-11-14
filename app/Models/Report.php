@@ -23,7 +23,7 @@ class Report extends Model
     public function getPathologyCategoryAttribute()
     {
         if ($this->pathology_category_id != null) {
-            return PathologyCategory::find($this->pathology_category_id)->name;
+            return PathologyCategory::find($this->pathology_category_id)?->name;
         }
     }
 
@@ -39,7 +39,7 @@ class Report extends Model
     public function getRadiologyCategoryAttribute()
     {
         if ($this->radiology_category_id != null) {
-            return PathologyCategory::find($this->radiology_category_id)->name;
+            return RadiologyCategory::find($this->radiology_category_id)?->name;
         }
     }
 

@@ -42,7 +42,7 @@ return new class extends Migration {
             $table->boolean('available_for_work')->default(false);
             $table->boolean('consent_to_list')->default(false);
             $table->timestamps();
-            $table->index(['verification_status', 'available_for_work', 'consent_to_list']);
+            $table->index(['verification_status', 'available_for_work', 'consent_to_list'], 'workforce_candidate_listing_idx');
         });
         Schema::create('workforce_employers', function (Blueprint $table) {
             $table->id();

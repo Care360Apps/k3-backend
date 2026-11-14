@@ -129,4 +129,41 @@ class ApprovedProfessionalAccessTest extends TestCase
         $this->actingAs(User::findOrFail(103), 'api')
             ->get('/__synthetic_professional_guard')->assertForbidden();
     }
+
+    public function test_doctor_login_saves_device_without_persisting_response_only_approval(): void
+    {
+        Schema::table('users', function (Blueprint $table) {
+            $table->boolean('verify')->default(true);
+            $table->string('device_token')->nullable();
+        });
+        Schema::table('doctor', function (Blueprint $table) {
+            $table->boolean('is_filled')->default(true);
+            $table->string('based_on')->default('commission');
+        });
+        $user = new class extends User {
+            protected $table = 'users';
+            public $timestamps = false;
+            public function getMorphClass() { return User::class; }
+            public function createToken($name, array $scopes = [])
+            {
+                return new \Laravel\Passport\PersonalAccessTokenResult('synthetic-access-token', new \Laravel\Passport\Token());
+            }
+        };
+        $user->setRawAttributes((array) DB::table('users')->where('id', 101)->first(), true);
+        $user->exists = true;
+        \Illuminate\Support\Facades\Auth::shouldReceive('attempt')->once()->andReturn(true);
+        \Illuminate\Support\Facades\Auth::shouldReceive('user')->andReturn($user);
+        $request = \Illuminate\Http\Request::create('/api/doctor_login', 'POST', [
+            'email' => 'doc@example.test', 'password' => 'synthetic-password',
+            'device_token' => 'synthetic-device',
+        ]);
+        $this->app->instance('request', $request);
+        $response = (new \App\Http\Controllers\DoctorApiController())->apiDoctorLogin($request);
+        $this->assertSame(200, $response->getStatusCode());
+        $payload = json_decode($response->getContent(), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertTrue($payload['success']);
+        $this->assertSame('approved', $payload['data']['approval_status']);
+        $this->assertSame('synthetic-device', DB::table('users')->where('id', 101)->value('device_token'));
+        $this->assertFalse(Schema::hasColumn('users', 'approval_status'));
+    }
 }

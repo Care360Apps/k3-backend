@@ -11,7 +11,7 @@
                 </div>
                 <div class="modal-body">
                     <p>
-                        {{ __('Download the CSV template, enter one product per row, then preview and validate it before importing. Existing products are updated and incoming stock is added; duplicate names in the same file are rejected.') }}
+                        {{ __('Download the CSV template, enter one product per row, then preview and validate it before importing. Existing products are updated and incoming stock is added; duplicate names in the same file are rejected. Importing the same file again adds its stock again; preview does not change stock.') }}
                         <a href="{{ url('medicines/bulk_template') }}">{{ __('Download the CSV template') }}</a>
                     </p>
                     <div class="form-group">
@@ -34,8 +34,8 @@
                                 <tr><td><code>incoming_stock</code></td><td>{{ __('Yes') }}</td><td>{{ __('Stock to add (whole number)') }}</td></tr>
                                 <tr><td><code>description</code></td><td>{{ __('Yes') }}</td><td></td></tr>
                                 <tr><td><code>works</code></td><td>{{ __('Yes') }}</td><td>{{ __('How it works') }}</td></tr>
-                                <tr><td><code>prescription_required</code></td><td>{{ __('No') }}</td><td>{{ __('yes / no (default no)') }}</td></tr>
-                                <tr><td><code>status</code></td><td>{{ __('No') }}</td><td>{{ __('active / inactive (default active)') }}</td></tr>
+                                <tr><td><code>prescription_required</code></td><td>{{ __('No') }}</td><td>{{ __('yes / no; blank preserves existing setting (new products default no)') }}</td></tr>
+                                <tr><td><code>status</code></td><td>{{ __('No') }}</td><td>{{ __('active / inactive; blank preserves existing setting (new products default active)') }}</td></tr>
                             </tbody>
                         </table>
                     </div>

@@ -262,7 +262,21 @@ class UserApiController extends Controller
 
     public function apiOffers()
     {
-        $offers = Offer::whereStatus(1)->get(['id', 'name', 'image', 'offer_code', 'discount', 'is_flat', 'discount_type', 'flatDiscount']);
+        // Public summaries never expose eligible patient/clinician IDs. Booking
+        // still validates identity, clinician, dates, usage and final totals.
+        $today = now()->toDateString();
+        $offers = Offer::whereStatus(1)->whereColumn('max_use', '>', 'use_count')
+            ->orderByDesc('id')->get([
+                'id', 'name', 'image', 'offer_code', 'discount', 'is_flat',
+                'discount_type', 'flatDiscount', 'desc', 'start_end_date', 'min_discount',
+            ])->filter(function ($offer) use ($today) {
+                [$start, $end] = array_pad(explode(' - ', (string) $offer->start_end_date), 2, null);
+                $valid = fn ($date) => is_string($date)
+                    && preg_match('/^\d{4}-\d{2}-\d{2}$/D', $date)
+                    && date('Y-m-d', strtotime($date)) === $date;
+
+                return $valid($start) && $valid($end) && $start <= $today && $end >= $today;
+            })->values();
 
         return response(['success' => true, 'data' => $offers, 'msg' => 'All Offers']);
     }
@@ -857,7 +871,7 @@ class UserApiController extends Controller
 
     public function apiSingleBlog($id)
     {
-        $blogs = Blog::where('id', $id)->orderBy('id', 'DESC')->first()->makeHidden(['created_at', 'updated_at', 'status', 'release_now']);
+        $blogs = Blog::where('status', 1)->where('release_now', 1)->where('id', $id)->firstOrFail()->makeHidden(['created_at', 'updated_at', 'status', 'release_now']);
 
         return response(['success' => true, 'data' => $blogs, 'msg' => 'Single Blog Details']);
     }

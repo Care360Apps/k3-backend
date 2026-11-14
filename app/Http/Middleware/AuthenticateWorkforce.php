@@ -36,6 +36,8 @@ class AuthenticateWorkforce
 
         $request->attributes->set('workforce_actor', $actor);
         $request->attributes->set('workforce_session_id', $session->id);
-        return $next($request);
+        $response=$next($request);
+        $response->headers->set('Cache-Control','private, no-store');
+        return $response;
     }
 }

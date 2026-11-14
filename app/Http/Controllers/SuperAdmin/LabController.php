@@ -258,24 +258,53 @@ class LabController extends Controller
         return view('superAdmin.lab.test_report', compact('test_reports', 'currency'));
     }
 
+    private function resultLabScope(): ?int
+    {
+        abort_if(Gate::denies('test_report'), 403);
+        if (auth()->user()->hasRole('laboratory')) {
+            $id = Lab::where('user_id', auth()->id())->value('id');
+            abort_unless($id, 403);
+            return (int) $id;
+        }
+        return null;
+    }
+
     public function upload_report(Request $request)
     {
-        abort_if(Gate::denies('test_report'), Response::HTTP_FORBIDDEN, '403 Forbidden');
-        $report = Report::query();
-        if (auth()->user()->hasRole('laboratory')) {
-            $report->where('lab_id', Lab::where('user_id', auth()->id())->value('id'));
-        }
-        $report = $report->find($request->report_id);
-        if ($report) {
-            $fileName = (new CustomController)->safeUpload(
-                $request->upload_report,
-                public_path().'/report_prescription/report',
-                CustomController::DOCUMENT_EXTENSIONS
-            );
-            $report['upload_report'] = $fileName;
-            $report->save();
-        }
+        $labId = $this->resultLabScope();
+        $request->validate(['report_id'=>'required|integer|min:1', 'upload_report'=>'required|file|mimes:pdf,jpg,jpeg,png|max:10240']);
+        $query = Report::query()->whereKey($request->report_id);
+        if ($labId !== null) $query->where('lab_id', $labId);
+        $report = $query->firstOrFail();
+        abort_if(in_array($report->workflow_status, ['released','cancelled'], true),409,'Released or cancelled results cannot be overwritten.');
+        $folder=storage_path('app/private/medical/lab-results');
+        if(!is_dir($folder)) mkdir($folder,0700,true);
+        $fileName=(new CustomController)->safeUpload($request->file('upload_report'),$folder,['pdf','jpg','jpeg','png']);
+        try {
+            \Illuminate\Support\Facades\DB::transaction(function()use($report,$labId,$fileName){
+                $q=Report::query()->whereKey($report->id);if($labId!==null)$q->where('lab_id',$labId);
+                $current=$q->lockForUpdate()->firstOrFail();
+                abort_if(in_array($current->workflow_status,['released','cancelled'],true),409);
+                $current->private_result_name=$fileName;
+                $current->save();
+            });
+        } catch (\Throwable $e) { @unlink($folder.DIRECTORY_SEPARATOR.$fileName); throw $e; }
+        return redirect()->back()->withStatus(__('Result saved privately. Review it before release to the patient.'));
+    }
 
-        return redirect()->back()->withStatus(__('Report Uploaded Successfully'));
+    public function advanceResult(Request $request, \App\Services\LabWorkflowService $service)
+    {
+        $labId=$this->resultLabScope();
+        $data=$request->validate(['report_id'=>'required|integer|min:1','status'=>'required|in:sample_collected,processing,result_ready,released,cancelled']);
+        $service->advance((int)$data['report_id'],(int)auth()->id(),$data['status'],$labId);
+        return back()->withStatus(__('Laboratory status updated.'));
+    }
+
+    public function downloadResult(int $reportId)
+    {
+        $labId=$this->resultLabScope();
+        $q=Report::query()->whereKey($reportId);if($labId!==null)$q->where('lab_id',$labId);
+        $report=$q->firstOrFail();
+        return \App\Services\LabResultFile::download($report);
     }
 }

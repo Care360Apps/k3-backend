@@ -10,22 +10,38 @@ class WorkforcePilotTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        config()->set('app.key', 'base64:'.base64_encode(str_repeat('w',32)));
         config()->set('database.default', 'sqlite');
         config()->set('database.connections.sqlite.database', ':memory:');
         config()->set('database.connections.sqlite.foreign_key_constraints', true);
         config()->set('cache.default', 'array');
+        config()->set('view.compiled', sys_get_temp_dir());
         config()->set('workforce.enabled', true);
+        config()->set('workforce.notice_approved',true);config()->set('workforce.notice_url','https://care360apps.com/recruitment-privacy');config()->set('workforce.notice_version','synthetic-v1');
         DB::purge('sqlite');
         $migration = require database_path(
             'migrations/2026_11_07_230000_create_workforce_pilot_tables.php'
         );
         $migration->up();
+        (require database_path('migrations/2026_11_07_231000_create_workforce_verification_and_invitations.php'))->up();
+        (require database_path('migrations/2026_11_14_000000_add_workforce_notice_consent.php'))->up();
     }
 
     protected function tearDown(): void
     {
         DB::disconnect('sqlite');
         parent::tearDown();
+    }
+
+    public function test_index_names_fit_the_mysql_and_mariadb_identifier_limit(): void
+    {
+        foreach (['workforce_accounts', 'workforce_sessions', 'workforce_candidates', 'workforce_employers'] as $table) {
+            $indexes = DB::connection()->getSchemaBuilder()->getIndexes($table);
+            $this->assertNotEmpty($indexes);
+            foreach ($indexes as $index) {
+                $this->assertLessThanOrEqual(64, strlen($index['name']), 'Index name exceeds MySQL/MariaDB limit: '.$index['name']);
+            }
+        }
     }
 
     private function signUp(string $type, string $email): array
@@ -37,7 +53,7 @@ class WorkforcePilotTest extends TestCase
             'password_confirmation' => 'Very-Synthetic-Password-2026!',
             'account_type' => $type,
             'adult_attestation' => true,
-            'workforce_terms_accepted' => true,
+            'workforce_terms_accepted' => true, 'notice_version'=>'synthetic-v1',
         ];
         $this->postJson('/api/workforce/v1/register', $data)->assertCreated();
         $login = $this->postJson('/api/workforce/v1/login', [
@@ -179,5 +195,50 @@ class WorkforcePilotTest extends TestCase
         $this->getJson('/api/workforce/v1/me', $header)->assertOk();
         $this->postJson('/api/workforce/v1/logout', [], $header)->assertOk();
         $this->getJson('/api/workforce/v1/me', $header)->assertUnauthorized();
+    }
+
+    public function test_review_requires_evidence_and_email_check_and_records_audit(): void
+    {
+        $this->signUp('employer', 'review@example.test');
+        $account = DB::table('workforce_accounts')->where('email','review@example.test')->first();
+        $id = DB::table('workforce_employers')->insertGetId([
+            'account_id'=>$account->id, 'organization_name'=>'Synthetic Employer',
+            'organization_type'=>'hospital','registration_number'=>'SYNTHETIC-ONLY','state'=>'Lagos',
+            'verification_status'=>'pending','created_at'=>now(),'updated_at'=>now(),
+        ]);
+        $service = new \App\Services\WorkforceReviewService();
+        try {
+            $service->review('employer',$id,'verified','admin.777',str_repeat('a',64),false);
+            $this->fail('Email check bypassed');
+        } catch (\DomainException $e) {
+            $this->assertSame('pending',DB::table('workforce_employers')->where('id',$id)->value('verification_status'));
+        }
+        $service->review('employer',$id,'verified','admin.777',str_repeat('a',64),true);
+        $this->assertSame('verified',DB::table('workforce_employers')->where('id',$id)->value('verification_status'));
+        $this->assertSame(1,DB::table('workforce_verification_events')->where('subject_id',$id)->count());
+        $this->assertNotNull(DB::table('workforce_accounts')->where('id',$account->id)->value('email_verified_at'));
+        $service->review('employer',$id,'revoked','admin.777',str_repeat('b',64),false);
+        $this->assertSame('revoked',DB::table('workforce_employers')->where('id',$id)->value('verification_status'));
+    }
+
+    public function test_workforce_review_web_route_rejects_non_reviewer(): void
+    {
+        \Illuminate\Support\Facades\Schema::create('permissions', function (\Illuminate\Database\Schema\Blueprint $t) { $t->id(); $t->string('name'); $t->string('guard_name'); });
+        $user = new class extends \App\Models\User {
+            public function hasRole($roles, ?string $guard = null): bool { return false; }
+        };
+        $user->id = 777;
+        $this->actingAs($user)->postJson('/workforce/review',[
+            'kind'=>'employer','profile_id'=>1,'decision'=>'verified',
+            'evidence_sha256'=>str_repeat('a',64),'email_checked'=>true,
+        ])->assertForbidden();
+    }
+
+    public function test_local_demo_rejects_real_applicants(): void
+    {
+        config()->set('workforce.local_demo', true);
+        $this->postJson('/api/workforce/v1/register', ['email'=>'real.person@example.com'])
+            ->assertUnprocessable();
+        $this->assertSame(0, DB::table('workforce_accounts')->count());
     }
 }

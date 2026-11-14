@@ -14,12 +14,13 @@ use Illuminate\Validation\Rule;
 
 class WorkforcePilotController extends Controller
 {
-    public function status()
+    public function status(Request $request)
     {
         return response()->json([
             'success' => true,
             'data' => [
-                'applications_open' => (bool) config('workforce.enabled', false),
+                'applications_open' => (bool) config('workforce.enabled', false) && \App\Services\RecruitmentNotice::details($request)!==null,
+                'notice'=>\App\Services\RecruitmentNotice::details($request),
                 'candidate_verification' => 'manual_review',
                 'employer_verification' => 'manual_review',
             ],
@@ -28,9 +29,16 @@ class WorkforcePilotController extends Controller
 
     public function register(Request $request)
     {
+        $notice=\App\Services\RecruitmentNotice::details($request);
+        abort_unless($notice,503);
+        $request->validate(['notice_version'=>['required',Rule::in([$notice['version']])]]);
         $request->merge([
             'email' => Str::lower(trim((string) $request->input('email', ''))),
         ]);
+        if (config('workforce.local_demo', false)) {
+            abort_unless(app()->environment('local','testing') && in_array($request->ip(), ['127.0.0.1','::1'],true),403);
+            $request->validate(['email'=>['required','regex:/^[a-zA-Z0-9._+-]+@care360\.example\.test$/']]);
+        }
         $data = $request->validate([
             'name' => ['required', 'string', 'min:2', 'max:120'],
             'email' => ['required', 'email:rfc', 'max:190', 'unique:workforce_accounts,email'],
@@ -42,13 +50,14 @@ class WorkforcePilotController extends Controller
 
         // Store the minimum required identity. Never import Patient clinical
         // fields or create Passport credentials for an employer.
-        DB::transaction(function () use ($data) {
+        DB::transaction(function () use ($data, $notice) {
             $actor = WorkforceAccount::create([
                 'name' => trim($data['name']),
                 'email' => $data['email'],
                 'password' => Hash::make($data['password']),
                 'account_type' => $data['account_type'],
             ]);
+            $actor->forceFill(['recruitment_notice_version'=>$notice['version'],'recruitment_notice_accepted_at'=>now()])->save();
             if ($actor->account_type === 'candidate') {
                 WorkforceCandidate::create(['account_id' => $actor->id]);
             }
@@ -93,7 +102,7 @@ class WorkforcePilotController extends Controller
                 'expires_at' => $expires->toIso8601String(),
                 'role' => $actor->account_type,
             ],
-        ]);
+        ])->header('Cache-Control','private, no-store');
     }
 
     public function me(Request $request)
@@ -109,6 +118,8 @@ class WorkforcePilotController extends Controller
                 'email' => $actor->email,
                 'account_type' => $actor->account_type,
                 'email_verified' => $actor->email_verified_at !== null,
+                'notice_version'=>$actor->recruitment_notice_version,
+                'notice_current'=>($notice=\App\Services\RecruitmentNotice::details($request)) && $actor->recruitment_notice_version===$notice['version'] && $actor->recruitment_notice_accepted_at!==null,
                 'profile' => $profile,
             ],
         ]);
@@ -197,16 +208,15 @@ class WorkforcePilotController extends Controller
     public function candidates(Request $request)
     {
         $actor = $this->actor($request);
-        if ($actor->account_type !== 'employer'
-            || ! $actor->employer
-            || $actor->employer->verification_status !== 'verified'
-            || $actor->email_verified_at === null) {
-            return response()->json(['success' => false, 'code' => 'EMPLOYER_NOT_VERIFIED'], 403);
+        try { \App\Services\CareerWorkflow::employer($actor); } catch(\Symfony\Component\HttpKernel\Exception\HttpException $e) {
+            if($e->getStatusCode()!==403)throw $e;
+            return response()->json(['success'=>false,'code'=>'EMPLOYER_NOT_VERIFIED'],403);
         }
 
         $filter = $request->validate([
             'state' => ['sometimes', 'string', 'max:80'],
             'desired_role' => ['sometimes', 'string', 'max:100'],
+            'qualification'=>['sometimes','string','max:150'],'min_experience_years'=>['sometimes','integer','min:0','max:70'],
         ]);
 
         $candidates = WorkforceCandidate::query()
@@ -234,6 +244,12 @@ class WorkforcePilotController extends Controller
         if (isset($filter['desired_role'])) {
             $candidates->where('desired_role', $filter['desired_role']);
         }
+
+        if(!empty($filter['qualification'])) $candidates->where('qualification','like','%'.str_replace(['%','_'],['\\%','\\_'],$filter['qualification']).'%');
+        if(isset($filter['min_experience_years'])) $candidates->whereExists(function($q)use($filter){
+            $q->selectRaw('1')->from('career_portfolios')->whereColumn('career_portfolios.account_id','workforce_candidates.account_id')
+                ->where('experience_years','>=',$filter['min_experience_years']);
+        });
 
         // Explicitly shape the response: never return uploaded credentials,
         // identity documents, phone/email, home location or patient records.
@@ -263,6 +279,14 @@ class WorkforcePilotController extends Controller
                 'total' => $rows->total(),
             ],
         ]);
+    }
+
+    public function consent(Request $request)
+    {
+        $a=$this->actor($request);$notice=\App\Services\RecruitmentNotice::details($request);abort_unless($notice,503);
+        $request->validate(['accepted'=>'accepted','notice_version'=>['required',Rule::in([$notice['version']])]]);
+        $a->forceFill(['recruitment_notice_version'=>$notice['version'],'recruitment_notice_accepted_at'=>now()])->save();
+        return response()->json(['success'=>true,'data'=>['notice_current'=>true]]);
     }
 
     public function logout(Request $request)

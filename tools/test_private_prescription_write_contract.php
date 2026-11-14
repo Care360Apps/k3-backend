@@ -29,7 +29,9 @@ $checks = [
     'Private writer uses storage outside public web root' =>
         str_contains($code['service'], "storage_path('app')")
         && str_contains($code['service'], "['private', 'medical', 'prescriptions']")
-        && ! str_contains($code['service'], 'public_path('),
+        && str_contains($code['service'], '$publicRoot = realpath(public_path())')
+        && str_contains($code['service'], '$resolvedRoot === $publicRoot')
+        && str_contains($code['service'], 'str_starts_with($resolvedRoot, $publicRoot.DIRECTORY_SEPARATOR)'),
     'Accept only real size-bounded PDF bytes' =>
         str_contains($code['service'], "getMimeType()")
         && str_contains($code['service'], "10 * 1024 * 1024")

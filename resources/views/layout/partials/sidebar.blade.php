@@ -58,6 +58,9 @@
             @endif
         </div>
         <ul class="sidebar-menu">
+            @can('workforce_review')
+            <li><a class="nav-link" href="{{ route('workforce.review') }}"><i class="fas fa-user-check"></i><span>{{ __('Workforce verification') }}</span></a></li>
+            @endcan
             @can('superadmin_dashboard')
                 <li class="{{ $activePage == 'home' ? 'active' : '' }}">
                     <a href="{{ url('home') }}">

@@ -1436,6 +1436,11 @@ class WebsiteController extends Controller
     public function download_report($report_id)
     {
         $id = Report::where('id', $report_id)->where('user_id', auth()->id())->firstOrFail();
+        if ($id->private_result_name) {
+            abort_unless($id->workflow_status === 'released',404);
+            return \App\Services\LabResultFile::download($id);
+        }
+        abort_unless(preg_match('/\A[a-zA-Z0-9_-]+\.(pdf|jpg|jpeg|png)\z/D',(string)$id->upload_report),404);
         $pathToFile = public_path().'/report_prescription/report/'.$id->upload_report;
         $name = $id->upload_report;
 
