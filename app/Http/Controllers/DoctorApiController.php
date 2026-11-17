@@ -960,7 +960,8 @@ class DoctorApiController extends Controller
     public function apiPaystackInit(Request $request)
     {
         $request->validate([
-            'amount' => 'bail|required|numeric|min:1|max:10000000',
+            'amount' => 'bail|required|numeric|min:1|max:1000000000',
+            'amount_unit' => 'sometimes|in:major,minor',
             'email' => 'sometimes|email',
             'currency' => 'bail|required|string|max:3',
         ]);
@@ -979,24 +980,50 @@ class DoctorApiController extends Controller
         }
         // Paystack accepts minor currency units. The payer identity and
         // metadata must be server-derived, never client-controlled.
-        $amountMinor = (int) round(((float) $request->amount) * 100);
+        // Existing Plus clients send kobo; new clients explicitly declare major units.
+        $majorUnits = $request->input('amount_unit', 'minor') === 'major';
+        if (($majorUnits && (float) $request->amount > 10000000)
+            || (!$majorUnits && (float) $request->amount !== floor((float) $request->amount))) {
+            return response(['success' => false, 'msg' => 'Invalid payment amount'], 422);
+        }
+        $amountMinor = (int) round(((float) $request->amount) * ($majorUnits ? 100 : 1));
+        $callbackUrl = rtrim((string) config('app.url'), '/').'/api/paystack/return';
+        try {
         $response = Http::withToken($secretKey)
+            ->timeout(20)->withOptions(['allow_redirects' => false])
             ->post('https://api.paystack.co/transaction/initialize', [
                 'email' => $payer->email,
                 'amount' => $amountMinor,
                 'currency' => $currency,
                 'metadata' => ['user_id' => (string) $payer->id],
+                'callback_url' => $callbackUrl,
             ]);
+        } catch (\Throwable $exception) {
+            logger()->warning('Paystack checkout initialization unavailable.');
+            return response(['success' => false, 'msg' => 'Paystack initialization failed'], 502);
+        }
         if (! $response->successful()) {
             return response(['success' => false, 'msg' => 'Paystack initialization failed'], 502);
         }
 
         $data = $response->json('data');
+        $checkout = is_array($data) ? parse_url((string) ($data['authorization_url'] ?? '')) : false;
+        if ($response->json('status') !== true || !is_array($data)
+            || !is_string($data['reference'] ?? null) || !preg_match('/^[A-Za-z0-9._=-]{1,200}$/D', $data['reference'])
+            || !is_string($data['access_code'] ?? null) || $data['access_code'] === ''
+            || !is_array($checkout) || ($checkout['scheme'] ?? '') !== 'https'
+            || !in_array(strtolower($checkout['host'] ?? ''), ['checkout.paystack.com', 'checkout.paystack.co', 'standard.paystack.co'], true)
+            || isset($checkout['user']) || isset($checkout['pass']) || isset($checkout['fragment'])
+            || (isset($checkout['port']) && $checkout['port'] !== 443)) {
+            return response(['success' => false, 'msg' => 'Paystack initialization failed'], 502);
+        }
         return response([
             'success' => true,
             'data' => [
                 'access_code' => $data['access_code'] ?? null,
                 'reference' => $data['reference'] ?? null,
+                'authorization_url' => $data['authorization_url'],
+                'callback_url' => $callbackUrl,
             ],
         ]);
     }

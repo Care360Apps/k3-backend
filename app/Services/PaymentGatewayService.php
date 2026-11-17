@@ -269,7 +269,7 @@ class PaymentGatewayService
             ->json('data');
         if (($data['status'] ?? null) !== 'success'
             || ! $this->sameCurrency($data['currency'] ?? null)
-            || (int) ($data['amount'] ?? 0) < $this->toMinorUnits($amount)
+            || (int) ($data['amount'] ?? 0) !== $this->toMinorUnits($amount)
             || (string) data_get($data, 'metadata.user_id', '') !== (string) $userId) {
             $this->fail();
         }

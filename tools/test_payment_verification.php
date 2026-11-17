@@ -164,6 +164,9 @@ namespace {
         'amount'=>10000, 'metadata'=>['user_id'=>'7'],
     ]];
     checkCase('Paystack verified owner and paid amount accepted', 'PAYSTACK', 'paystack-test', true);
+    Http::$payload['data']['amount'] = 1000000;
+    checkCase('Overpaid Paystack receipt rejected instead of silently accepting a multiplied price', 'PAYSTACK', 'paystack-test', false);
+    Http::$payload['data']['amount'] = 10000;
     Http::$payload['data']['metadata']['user_id'] = '99';
     checkCase('Paystack receipt for different owner rejected', 'PAYSTACK', 'paystack-test', false);
     unset(Http::$payload['data']['metadata']['user_id']);

@@ -16,6 +16,10 @@ use App\Http\Controllers\UserApiController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
+// A browser return is not payment confirmation. Orders still require server verification.
+Route::get('paystack/return', fn () => response()->json(['message' => 'Return to Care360 to verify your payment.'])
+    ->header('Cache-Control', 'no-store'))->middleware('throttle:30,1');
+
 /*
 |--------------------------------------------------------------------------
 | API Routes

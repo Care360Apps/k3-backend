@@ -154,4 +154,4 @@ jobs:
       - name: Ephemeral Passport keys for the synthetic API guard
         run: php artisan passport:keys --no-interaction
       - name: Test private prescription storage, ownership, rollback and isolated workforce
-        run: php artisan test --filter='(CareerTrainingWorkflowTest|PrivatePrescriptionAccessTest|PrivatePrescriptionWriteTest|LegacyPrescriptionStagingTest|ApprovedProfessionalAccessTest|AtomicPaymentReceiptClaimTest|WorkforcePilotTest|DoctorWorkspaceTest|ClinicalWorkflowTest|MedicineBulkWorkflowTest|LabWorkflowTest|PatientDiscoveryPublicationTest)' --stop-on-failure
+        run: php artisan test --filter='(PaystackCheckoutTest|CareerTrainingWorkflowTest|PrivatePrescriptionAccessTest|PrivatePrescriptionWriteTest|LegacyPrescriptionStagingTest|ApprovedProfessionalAccessTest|AtomicPaymentReceiptClaimTest|WorkforcePilotTest|DoctorWorkspaceTest|ClinicalWorkflowTest|MedicineBulkWorkflowTest|LabWorkflowTest|PatientDiscoveryPublicationTest)' --stop-on-failure
