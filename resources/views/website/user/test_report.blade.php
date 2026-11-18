@@ -53,7 +53,11 @@
                                                 <td class="text-sm px-6 py-4 font-fira-sans">{{ $test_report->payment_type }}</td>
                                                 <td class="text-sm px-6 py-4 font-fira-sans">{{ $currency }}{{ $test_report->amount }}</td>
                                                 <td class="text-sm px-6 py-4 font-fira-sans">
-                                                    @if ($test_report->upload_report == null)
+                                                    @if ($test_report->private_result_name && $test_report->workflow_status === 'released')
+                                                    <a class="text-primary" href="{{ url('download_report/'.$test_report->id) }}">{{ __('Download released result') }}</a>
+                                                    @elseif ($test_report->private_result_name)
+                                                    {{ __('Result awaiting laboratory release') }}
+                                                    @elseif ($test_report->upload_report == null)
                                                     {{ __('Report Not Available.') }}
                                                     @else
                                                     <a class="text-primary" href="{{ 'download_report/'.$test_report->id }}">

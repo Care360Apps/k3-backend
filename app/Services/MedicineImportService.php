@@ -39,7 +39,7 @@ class MedicineImportService
     {
         $rows = [
             self::COLUMNS,
-            ['Paracetamol 500mg', 'Pain Relief', '120', '10', '50', 'Pain and fever relief tablets', 'Take 1 tablet every 6 hours after meals', 'no', 'yes'],
+            
         ];
         $handle = fopen('php://temp', 'r+');
         foreach ($rows as $row) {
@@ -59,6 +59,9 @@ class MedicineImportService
     {
         [$header, $rows] = $this->read($file);
 
+        if (count($header) !== count(array_unique($header)) || in_array('', $header, true)) {
+            $this->fail([__('Column names must be unique and non-empty, including aliases.')]);
+        }
         $missing = array_diff(self::REQUIRED_COLUMNS, $header);
         if ($missing) {
             $this->fail([__('Missing column(s): :columns', ['columns' => implode(', ', $missing)])]);
@@ -77,6 +80,10 @@ class MedicineImportService
         $valid = [];
         $seenNames = [];
         foreach ($rows as $lineNumber => $values) {
+            if (count($values) > count($header)) {
+                $errors[] = __('Row :row: too many cells. Quote values containing commas.', ['row' => $lineNumber]);
+                continue;
+            }
             $row = array_combine($header, array_pad(array_slice($values, 0, count($header)), count($header), ''));
             $row = array_map(fn ($value) => trim((string) $value), $row);
             foreach (['prescription_required', 'status'] as $flag) {
@@ -122,8 +129,8 @@ class MedicineImportService
                     'incoming_stock' => (int) $row['incoming_stock'],
                     'description' => $row['description'],
                     'works' => $row['works'],
-                    'prescription_required' => self::BOOLEAN_VALUES[$row['prescription_required'] ?? ''] ?? 0,
-                    'status' => self::BOOLEAN_VALUES[$row['status'] ?? ''] ?? 1,
+                    'prescription_required' => self::BOOLEAN_VALUES[$row['prescription_required'] ?? ''] ?? null,
+                    'status' => self::BOOLEAN_VALUES[$row['status'] ?? ''] ?? null,
                 ];
             }
         }
@@ -158,8 +165,10 @@ class MedicineImportService
             $created = 0;
             $updated = 0;
             foreach ($valid as $data) {
-                $medicine = Medicine::where('pharmacy_id', $pharmacyId)->where('name', $data['name'])->first();
+                $medicine = Medicine::where('pharmacy_id', $pharmacyId)->where('name', $data['name'])->lockForUpdate()->first();
                 if ($medicine) {
+                    $data['prescription_required'] ??= $medicine->prescription_required;
+                    $data['status'] ??= $medicine->status;
                     $medicine->update(array_merge($data, [
                         'name' => $medicine->name,
                         'incoming_stock' => $medicine->incoming_stock + $data['incoming_stock'],
@@ -167,6 +176,8 @@ class MedicineImportService
                     ]));
                     $updated++;
                 } else {
+                    $data['prescription_required'] ??= 0;
+                    $data['status'] ??= 1;
                     Medicine::create(array_merge($data, [
                         'pharmacy_id' => $pharmacyId,
                         'total_stock' => $data['incoming_stock'],

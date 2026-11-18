@@ -66,6 +66,12 @@ class RouteServiceProvider extends ServiceProvider
             ]);
         });
 
+        RateLimiter::for('career-recovery', function (Request $request) {
+            $email=strtolower(trim((string)$request->input('email','')));
+            return [Limit::perMinute(10)->by('career-recovery-ip:'.$request->ip()),
+                Limit::perHour(3)->by('career-recovery-account:'.hash('sha256',$email))];
+        });
+
         RateLimiter::for('api', function (Request $request) {
             return Limit::perMinute(60)->by(optional($request->user())->id ?: $request->ip());
         });

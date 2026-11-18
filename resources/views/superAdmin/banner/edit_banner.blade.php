@@ -61,12 +61,33 @@
                     </div>
                     <div class="form-group">
                         <label class="col-form-label">{{__('Link')}}</label>
-                        <input type="text" value="{{ $banner->link }}" name="link" class="form-control @error('link') is-invalid @enderror">
+                        <input type="text" value="{{ $banner->link }}" name="link" type="url" placeholder="https://partner.example.org" class="form-control @error('link') is-invalid @enderror">
                         @error('link')
                         <div class="invalid-feedback">
                             {{ $message }}
                         </div>
                         @enderror
+                    </div>
+                    <div class="form-group">
+                        <label class="d-block">
+                            <input type="checkbox" name="is_sponsored" value="1" {{ old('is_sponsored', $banner->is_sponsored) ? 'checked' : '' }}>
+                            {{ __('Sponsored / paid placement') }}
+                        </label>
+                        <label class="d-block">
+                            <input type="checkbox" name="status" value="1" {{ old('status', $banner->status) ? 'checked' : '' }}>
+                            {{ __('Active') }}
+                        </label>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="starts_at">{{ __('Start date (optional)') }}</label>
+                            <input type="date" class="form-control" id="starts_at" name="starts_at" value="{{ old('starts_at', optional($banner->starts_at)->format('Y-m-d')) }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="ends_at">{{ __('End date (optional)') }}</label>
+                            <input type="date" class="form-control" id="ends_at" name="ends_at" value="{{ old('ends_at', optional($banner->ends_at)->format('Y-m-d')) }}">
+                            @error('ends_at') <small class="text-danger">{{ $message }}</small> @enderror
+                        </div>
                     </div>
                     <div class="text-right">
                         <button type="submit" class="btn btn-primary">{{__('Submit')}}</button>

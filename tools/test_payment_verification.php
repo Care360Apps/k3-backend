@@ -2,6 +2,28 @@
 // Runs the real payment service against isolated fake transports/models.
 // No Composer, database, credentials, or external HTTP requests are used.
 namespace App\Models {
+    /**
+     * Shared no-database ledger for all fake Care360 payment product tables.
+     */
+    class SyntheticReceiptTable {
+        public static bool $duplicate = false;
+        public static array $claimed = [];
+        private string $token = '';
+
+        public static function where($column, $token): self {
+            if ($column !== 'payment_token') throw new \RuntimeException('Unexpected query.');
+            $instance = new static;
+            $instance->token = (string) $token;
+            return $instance;
+        }
+        public function exists(): bool {
+            return self::$duplicate || (self::$claimed[static::class][$this->token] ?? false);
+        }
+    }
+    class Appointment extends SyntheticReceiptTable {}
+    class PurchaseMedicine extends SyntheticReceiptTable {}
+    class Report extends SyntheticReceiptTable {}
+    class DoctorSubscription extends SyntheticReceiptTable {}
     class Setting {
         public string $currency_code = 'NGN';
         public string $stripe_secret_key = 'synthetic';
@@ -37,10 +59,18 @@ namespace Illuminate\Support\Facades {
 namespace Stripe {
     class StripeClient {
         public object $paymentIntents;
+        public object $charges;
+        public static array $lastCharge = [];
         public static array $intent = [];
         public function __construct($key) {
             $this->paymentIntents = new class {
                 public function retrieve($id): object { return (object) StripeClient::$intent; }
+            };
+            $this->charges = new class {
+                public function create($data): object {
+                    StripeClient::$lastCharge = $data;
+                    return (object) ['id' => 'ch_synthetic', 'status' => 'succeeded'];
+                }
             };
         }
     }
@@ -61,22 +91,21 @@ namespace {
         }
         return $data;
     }
-    class FakeOrder {
-        public static bool $duplicate = false;
-        public static function where($column, $token): self { return new self; }
-        public function exists(): bool { return self::$duplicate; }
-    }
+    class FakeOrder extends \App\Models\SyntheticReceiptTable {}
     require __DIR__.'/../app/Services/PaymentGatewayService.php';
     $GLOBALS['gatewaySecret'] = 'synthetic';
     $passed = 0;
-    function checkCase(string $label, string $type, string $token, bool $expected): void {
+    function checkCase(
+        string $label, string $type, string $token, bool $expected,
+        ?string $expectedFlutterwaveRef = null
+    ): void {
         global $passed;
         $accepted = false;
         try {
             $result = (new PaymentGatewayService)->resolve([
                 'payment_type' => $type, 'payment_token' => $token,
                 'payment_status' => 1, 'amount' => 100,
-            ], FakeOrder::class, 7, 100);
+            ], FakeOrder::class, 7, 100, $expectedFlutterwaveRef);
             $accepted = $result['payment_status'] === 1;
         } catch (ValidationException $e) {}
         if ($accepted !== $expected) throw new \RuntimeException($label);
@@ -101,9 +130,26 @@ namespace {
     StripeClient::$intent['metadata']['user_id'] = 8;
     checkCase('Stripe wrong owner rejected', 'STRIPE', 'pi_1', false);
     StripeClient::$intent['metadata']['user_id'] = 7;
+    checkCase('Stripe source token generates verified account-owned charge', 'STRIPE', 'tok_test', true);
+    if ((string) (StripeClient::$lastCharge['metadata']['user_id'] ?? '') !== '7') {
+        throw new \RuntimeException('Stripe card-token charge lacks authenticated ownership metadata');
+    }
     FakeOrder::$duplicate = true;
     checkCase('existing order payment token rejected', 'STRIPE', 'pi_1', false);
     FakeOrder::$duplicate = false;
+
+    \App\Models\SyntheticReceiptTable::$claimed[\App\Models\Appointment::class]['pi_1'] = true;
+    checkCase('payment reference on appointment cannot be reused for another Care360 service', 'STRIPE', 'pi_1', false);
+    unset(\App\Models\SyntheticReceiptTable::$claimed[\App\Models\Appointment::class]['pi_1']);
+    \App\Models\SyntheticReceiptTable::$claimed[\App\Models\PurchaseMedicine::class]['pi_1'] = true;
+    checkCase('medicine receipt cannot pay second order', 'STRIPE', 'pi_1', false);
+    unset(\App\Models\SyntheticReceiptTable::$claimed[\App\Models\PurchaseMedicine::class]['pi_1']);
+    \App\Models\SyntheticReceiptTable::$claimed[\App\Models\Report::class]['pi_1'] = true;
+    checkCase('lab receipt cannot be replayed', 'STRIPE', 'pi_1', false);
+    unset(\App\Models\SyntheticReceiptTable::$claimed[\App\Models\Report::class]['pi_1']);
+    \App\Models\SyntheticReceiptTable::$claimed[\App\Models\DoctorSubscription::class]['pi_1'] = true;
+    checkCase('subscription receipt cannot be replayed', 'STRIPE', 'pi_1', false);
+    unset(\App\Models\SyntheticReceiptTable::$claimed[\App\Models\DoctorSubscription::class]['pi_1']);
 
     Http::$payload = ['id'=>'PAYID-1','state'=>'approved','transactions'=>[
         ['amount'=>['total'=>'100.00','currency'=>'NGN']]]];
@@ -112,6 +158,54 @@ namespace {
     checkCase('PayPal v1 wrong currency rejected', 'PAYPAL', 'PAYID-1', false);
     unset(Http::$payload['transactions'][0]['amount']['currency']);
     checkCase('PayPal v1 missing currency rejected', 'PAYPAL', 'PAYID-1', false);
+
+    Http::$payload = ['data'=>[
+        'id'=>'paystack-test', 'status'=>'success', 'currency'=>'NGN',
+        'amount'=>10000, 'metadata'=>['user_id'=>'7'],
+    ]];
+    checkCase('Paystack verified owner and paid amount accepted', 'PAYSTACK', 'paystack-test', true);
+    Http::$payload['data']['amount'] = 1000000;
+    checkCase('Overpaid Paystack receipt rejected instead of silently accepting a multiplied price', 'PAYSTACK', 'paystack-test', false);
+    Http::$payload['data']['amount'] = 10000;
+    Http::$payload['data']['metadata']['user_id'] = '99';
+    checkCase('Paystack receipt for different owner rejected', 'PAYSTACK', 'paystack-test', false);
+    unset(Http::$payload['data']['metadata']['user_id']);
+    checkCase('Unbound Paystack receipt rejected', 'PAYSTACK', 'paystack-test', false);
+    Http::$payload['data']['metadata']['user_id'] = '7';
+    Http::$payload['data']['amount'] = 9900;
+    checkCase('Underpaid Paystack receipt rejected', 'PAYSTACK', 'paystack-test', false);
+
+    Http::$payload = [
+        'id' => 'ORDER-1', 'status'=>'COMPLETED',
+        'purchase_units' => [[
+            'custom_id' => '7',
+            'payments' => ['captures'=>[[
+                'status'=>'COMPLETED',
+                'amount'=>['currency_code'=>'NGN','value'=>'100.00'],
+            ]]],
+        ]],
+    ];
+    checkCase('PayPal v2 completed and account-bound receipt accepted', 'PAYPAL', 'ORDER-1', true);
+    Http::$payload['purchase_units'][0]['custom_id'] = '101';
+    checkCase('PayPal v2 mismatched owner is rejected', 'PAYPAL', 'ORDER-1', false);
+    unset(Http::$payload['purchase_units'][0]['custom_id']);
+    checkCase('PayPal v2 unbound order rejected', 'PAYPAL', 'ORDER-1', false);
+
+    Http::$payload = ['data'=>[
+        'id'=>4321, 'status'=>'successful', 'currency'=>'NGN',
+        'amount'=>100, 'tx_ref'=>'signed-synthetic-subscription',
+    ]];
+    checkCase('Flutterwave reference is correctly bound to subscription',
+        'FLUTTERWAVE', '4321', true, 'signed-synthetic-subscription');
+    checkCase('Flutterwave payment belonging to different subscription is rejected',
+        'FLUTTERWAVE', '4321', false, 'another-subscription');
+    unset(Http::$payload['data']['tx_ref']);
+    checkCase('Flutterwave missing subscription reference is rejected',
+        'FLUTTERWAVE', '4321', false, 'signed-synthetic-subscription');
+    Http::$payload['data']['tx_ref'] = 'signed-synthetic-subscription';
+    Http::$payload['data']['id'] = 9999;
+    checkCase('Flutterwave mismatch between transaction ID and receipt is rejected',
+        'FLUTTERWAVE', '4321', false, 'signed-synthetic-subscription');
 
     Http::$payload = ['status'=>'authorized','currency'=>'NGN','amount'=>10000];
     checkCase('Razorpay authorization alone is unpaid', 'RAZORPAY', 'pay_1', false);

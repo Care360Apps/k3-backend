@@ -36,20 +36,23 @@ class OfferController extends Controller
 
     public function store(Request $request)
     {
+        abort_if(Gate::denies('offer_add'), Response::HTTP_FORBIDDEN, '403 Forbidden');
         $request->validate([
             'name' => 'bail|required',
             'offer_code' => 'bail|required',
-            'max_use' => 'bail|required',
-            'min_discount' => 'bail|required',
-            'user_id' => 'bail|required',
-            'doctor_id' => 'bail|required',
+            'max_use' => 'bail|required|integer|min:1',
+            'min_discount' => 'bail|required|numeric|min:0',
+            'user_id' => 'bail|required|array|min:1',
+            'user_id.*' => 'required|integer|exists:users,id',
+            'doctor_id' => 'bail|required|array|min:1',
+            'doctor_id.*' => 'required|integer|exists:doctor,id',
             'desc' => 'bail|required',
             'image' => 'bail|mimes:jpeg,png,jpg|max:1000',
         ],
             [
                 'image.max' => 'The Image May Not Be Greater Than 1 MegaBytes.',
             ]);
-        $data = $request->all();
+        $data = $request->only(['name', 'offer_code', 'max_use', 'min_discount', 'user_id', 'doctor_id', 'desc', 'start_end_date', 'update_start_end_date', 'discount_type', 'discount', 'is_flat', 'flatDiscount']);
         if ($request->hasFile('image')) {
             $data['image'] = (new CustomController)->imageUpload($request->image);
         } else {
@@ -76,28 +79,31 @@ class OfferController extends Controller
         abort_if(Gate::denies('offer_edit'), Response::HTTP_FORBIDDEN, '403 Forbidden');
         $doctors = Doctor::whereStatus(1)->get();
         $users = User::doesntHave('roles')->whereStatus(1)->get();
-        $offer = Offer::find($id);
+        $offer = Offer::findOrFail($id);
 
         return view('superAdmin.offer.edit_offer', compact('doctors', 'users', 'offer'));
     }
 
     public function update(Request $request, $id)
     {
+        abort_if(Gate::denies('offer_edit'), Response::HTTP_FORBIDDEN, '403 Forbidden');
         $request->validate([
             'name' => 'bail|required',
             'offer_code' => 'bail|required',
-            'max_use' => 'bail|required',
-            'min_discount' => 'bail|required',
-            'user_id' => 'bail|required',
-            'doctor_id' => 'bail|required',
+            'max_use' => 'bail|required|integer|min:1',
+            'min_discount' => 'bail|required|numeric|min:0',
+            'user_id' => 'bail|required|array|min:1',
+            'user_id.*' => 'required|integer|exists:users,id',
+            'doctor_id' => 'bail|required|array|min:1',
+            'doctor_id.*' => 'required|integer|exists:doctor,id',
             'desc' => 'bail|required',
             'image' => 'bail|mimes:jpeg,png,jpg|max:1000',
         ],
             [
                 'image.max' => 'The Image May Not Be Greater Than 1 MegaBytes.',
             ]);
-        $offer = Offer::find($id);
-        $data = $request->all();
+        $offer = Offer::findOrFail($id);
+        $data = $request->only(['name', 'offer_code', 'max_use', 'min_discount', 'user_id', 'doctor_id', 'desc', 'start_end_date', 'update_start_end_date', 'discount_type', 'discount', 'is_flat', 'flatDiscount']);
         $data = array_filter($data, function ($a) {
             return $a !== '';
         });
@@ -123,7 +129,8 @@ class OfferController extends Controller
      */
     public function destroy($id)
     {
-        $offer = Offer::find($id);
+        abort_if(Gate::denies('offer_delete'), Response::HTTP_FORBIDDEN, '403 Forbidden');
+        $offer = Offer::findOrFail($id);
         (new CustomController)->deleteFile($offer->image);
         $offer->delete();
 

@@ -42,7 +42,7 @@
                     </div>
                     <div class="form-group">
                         <label class="col-form-label">{{__('Banner name')}}</label>
-                        <input type="text" value="{{ $banner->name }}" name="name" class="form-control @error('name') is-invalid @enderror">
+                        <input type="text" value="{{ old('name') }}" name="name" class="form-control @error('name') is-invalid @enderror">
                         @error('name')
                         <div class="invalid-feedback">
                             {{ $message }}
@@ -51,7 +51,7 @@
                     </div>
                     <div class="form-group">
                         <label class="col-form-label">{{__('Banner Description')}}</label>
-                        <textarea name="description" class="form-control @error('description') is-invalid @enderror" maxlength="255" rows="10" style="height: 80px;">{{ $banner->description }}</textarea>
+                        <textarea name="description" class="form-control @error('description') is-invalid @enderror" maxlength="255" rows="10" style="height: 80px;">{{ old('description') }}</textarea>
                         @error('name')
                         <div class="invalid-feedback">
                             {{ $message }}
@@ -60,12 +60,31 @@
                     </div>
                     <div class="form-group">
                         <label class="col-form-label">{{__('Link')}}</label>
-                        <input type="text" value="{{ old('link') }}" name="link" class="form-control @error('link') is-invalid @enderror">
+                        <input type="text" value="{{ old('link') }}" name="link" type="url" placeholder="https://partner.example.org" class="form-control @error('link') is-invalid @enderror">
                         @error('link')
                         <div class="invalid-feedback">
                             {{ $message }}
                         </div>
                         @enderror
+                    </div>
+                    <div class="form-group">
+                        <label class="col-form-label">{{ __('Placement type') }}</label>
+                        <label class="d-block">
+                            <input type="checkbox" name="is_sponsored" value="1" {{ old('is_sponsored') ? 'checked' : '' }}>
+                            {{ __('Sponsored / paid placement — clearly labelled in Patient app') }}
+                        </label>
+                        <small class="text-muted">{{ __('Leave unchecked for an unpaid partner listing.') }}</small>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <label for="starts_at">{{ __('Start date (optional)') }}</label>
+                            <input type="date" class="form-control" id="starts_at" name="starts_at" value="{{ old('starts_at') }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="ends_at">{{ __('End date (optional)') }}</label>
+                            <input type="date" class="form-control" id="ends_at" name="ends_at" value="{{ old('ends_at') }}">
+                            @error('ends_at') <small class="text-danger">{{ $message }}</small> @enderror
+                        </div>
                     </div>
                     <div class="row mt-4">
                         <div class="col-lg-12">

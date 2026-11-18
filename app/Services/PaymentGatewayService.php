@@ -3,6 +3,10 @@
 namespace App\Services;
 
 use App\Models\Setting;
+use App\Models\Appointment;
+use App\Models\DoctorSubscription;
+use App\Models\PurchaseMedicine;
+use App\Models\Report;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Validation\ValidationException;
@@ -78,7 +82,10 @@ class PaymentGatewayService
      *
      * @param  class-string<\Illuminate\Database\Eloquent\Model>  $modelClass  used to reject a payment token that was already used
      */
-    public function resolve(array $data, string $modelClass, int $userId, ?float $chargeAmount = null): array
+    public function resolve(
+        array $data, string $modelClass, int $userId, ?float $chargeAmount = null,
+        ?string $expectedFlutterwaveReference = null
+    ): array
     {
         $type = strtoupper((string) ($data['payment_type'] ?? ''));
         if ($type === 'RAZOR') {
@@ -100,8 +107,9 @@ class PaymentGatewayService
         $verify = match ($type) {
             'STRIPE' => fn () => $this->verifyStripe($token, $amount, $userId),
             'PAYPAL' => fn () => $this->verifyPaypal($token, $amount, $userId),
-            'PAYSTACK' => config('services.paystack.secret') ? fn () => $this->verifyPaystack($token, $amount) : null,
-            'FLUTTERWAVE' => config('services.flutterwave.secret') ? fn () => $this->verifyFlutterwave($token, $amount) : null,
+            'PAYSTACK' => config('services.paystack.secret') ? fn () => $this->verifyPaystack($token, $amount, $userId) : null,
+            'FLUTTERWAVE' => config('services.flutterwave.secret')
+                ? fn () => $this->verifyFlutterwave($token, $amount, $expectedFlutterwaveReference) : null,
             'RAZORPAY' => config('services.razorpay.secret') ? fn () => $this->verifyRazorpay($token, $amount) : null,
         };
         if ($verify === null) {
@@ -114,16 +122,41 @@ class PaymentGatewayService
         } catch (ValidationException $e) {
             throw $e;
         } catch (\Throwable $e) {
-            info("{$type} payment verification failed: ".$e->getMessage());
+            // Gateway exceptions can contain token fragments, reference IDs,
+            // payer attributes or full upstream response bodies. Log only
+            // the approved provider identifier; never raw exception text.
+            info("{$type} payment verification failed.");
             $this->fail();
         }
-        if ($modelClass::where('payment_token', $verifiedToken)->exists()) {
+        if ($this->usedAcrossCare360Services($verifiedToken)) {
+            // A receipt may settle at most one product across Care360.
             $this->fail();
         }
         $data['payment_token'] = $verifiedToken;
         $data['payment_status'] = 1;
 
         return $data;
+    }
+
+    /**
+     * Reject sequential cross-product receipt reuse. This check is not an
+     * atomic unique claim: concurrent transactions still need a unique
+     * persistent receipt ledger before production release.
+     */
+    private function usedAcrossCare360Services(string $verifiedToken): bool
+    {
+        foreach ([
+            Appointment::class,
+            PurchaseMedicine::class,
+            Report::class,
+            DoctorSubscription::class,
+        ] as $model) {
+            if ($model::where('payment_token', $verifiedToken)->exists()) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function verifyStripe(string $token, float $amount, int $userId): string
@@ -147,7 +180,10 @@ class PaymentGatewayService
             $ok = $charge->status === 'succeeded'
                 && ! $charge->refunded
                 && strtolower($charge->currency) === strtolower($this->setting->currency_code)
-                && $charge->amount >= $this->toMinorUnits($amount);
+                && $charge->amount >= $this->toMinorUnits($amount)
+                // Legacy Stripe charge references are reusable identifiers;
+                // reject unbound receipts rather than mark another user's order paid.
+                && (string) ($charge->metadata['user_id'] ?? '') === (string) $userId;
             if (! $ok) {
                 $this->fail();
             }
@@ -160,6 +196,7 @@ class PaymentGatewayService
             'amount' => $this->toMinorUnits($amount),
             'currency' => strtolower($this->setting->currency_code),
             'source' => $token,
+            'metadata' => ['user_id' => (string) $userId],
         ]);
         if ($charge->status !== 'succeeded') {
             $this->fail();
@@ -172,7 +209,7 @@ class PaymentGatewayService
     {
         // The web panels use the PayPal JS SDK, which returns Orders v2 ids; the apps use v1 PAYID-... payments.
         if (! str_starts_with($paymentId, 'PAYID-')) {
-            return $this->verifyPaypalOrder($paymentId, $amount);
+            return $this->verifyPaypalOrder($paymentId, $amount, $userId);
         }
         if (Cache::get($this->paypalOwnerKey($paymentId)) != $userId) {
             $this->fail();
@@ -191,17 +228,32 @@ class PaymentGatewayService
         return $payment['id'];
     }
 
-    private function verifyPaypalOrder(string $orderId, float $amount): string
+    private function verifyPaypalOrder(string $orderId, float $amount, int $userId): string
     {
         $order = Http::withToken($this->paypalAccessToken())
             ->get($this->paypalBaseUrl().'/v2/checkout/orders/'.rawurlencode($orderId))
             ->throw()
             ->json();
-        $captured = collect($order['purchase_units'] ?? [])
-            ->flatMap(fn ($unit) => data_get($unit, 'payments.captures', []))
-            ->where('status', 'COMPLETED')
-            ->filter(fn ($capture) => strtoupper((string) data_get($capture, 'amount.currency_code')) === strtoupper((string) $this->setting->currency_code))
-            ->sum(fn ($capture) => (float) data_get($capture, 'amount.value', 0));
+        $units = $order['purchase_units'] ?? null;
+        if (! is_array($units) || $units === []) {
+            $this->fail();
+        }
+        $captured = 0.0;
+        foreach ($units as $unit) {
+            // A gateway-successful order does not prove it belongs to this
+            // Care360 user. The integrator must set custom_id from the
+            // authenticated server-created checkout, not from untrusted UI.
+            if (! is_array($unit)
+                || (string) ($unit['custom_id'] ?? '') !== (string) $userId) {
+                $this->fail();
+            }
+            foreach ((array) data_get($unit, 'payments.captures', []) as $capture) {
+                if (($capture['status'] ?? null) === 'COMPLETED'
+                    && $this->sameCurrency(data_get($capture, 'amount.currency_code'))) {
+                    $captured += (float) data_get($capture, 'amount.value', 0);
+                }
+            }
+        }
         if (($order['status'] ?? null) !== 'COMPLETED' || $captured + 0.001 < $amount) {
             $this->fail();
         }
@@ -209,7 +261,7 @@ class PaymentGatewayService
         return $order['id'];
     }
 
-    private function verifyPaystack(string $reference, float $amount): string
+    private function verifyPaystack(string $reference, float $amount, int $userId): string
     {
         $data = Http::withToken(config('services.paystack.secret'))
             ->get('https://api.paystack.co/transaction/verify/'.rawurlencode($reference))
@@ -217,14 +269,17 @@ class PaymentGatewayService
             ->json('data');
         if (($data['status'] ?? null) !== 'success'
             || ! $this->sameCurrency($data['currency'] ?? null)
-            || (int) ($data['amount'] ?? 0) < $this->toMinorUnits($amount)) {
+            || (int) ($data['amount'] ?? 0) !== $this->toMinorUnits($amount)
+            || (string) data_get($data, 'metadata.user_id', '') !== (string) $userId) {
             $this->fail();
         }
 
         return $reference;
     }
 
-    private function verifyFlutterwave(string $transactionId, float $amount): string
+    private function verifyFlutterwave(
+        string $transactionId, float $amount, ?string $expectedReference = null
+    ): string
     {
         $data = Http::withToken(config('services.flutterwave.secret'))
             ->get('https://api.flutterwave.com/v3/transactions/'.rawurlencode($transactionId).'/verify')
@@ -232,7 +287,11 @@ class PaymentGatewayService
             ->json('data');
         if (($data['status'] ?? null) !== 'successful'
             || ! $this->sameCurrency($data['currency'] ?? null)
-            || (float) ($data['amount'] ?? 0) + 0.001 < $amount) {
+            || (float) ($data['amount'] ?? 0) + 0.001 < $amount
+            || ($expectedReference !== null
+                && (! isset($data['tx_ref']) || ! is_string($data['tx_ref'])
+                    || ! hash_equals($expectedReference, $data['tx_ref'])
+                    || (string) ($data['id'] ?? '') !== $transactionId))) {
             $this->fail();
         }
 

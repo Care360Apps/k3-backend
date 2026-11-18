@@ -25,7 +25,9 @@ use App\Models\User;
 use App\Models\WorkingHour;
 use App\Services\FirebaseTokenService;
 use App\Services\DoctorDocumentService;
+use App\Services\PrivatePrescriptionStorage;
 use App\Services\PaymentGatewayService;
+use App\Services\PaymentReceiptClaimService;
 use Berkayk\OneSignal\OneSignalClient;
 use Carbon\Carbon;
 use DateTime;
@@ -54,14 +56,26 @@ class DoctorApiController extends Controller
             if ($userDoctor->hasRole('doctor')) {
                 if ($userDoctor->verify == 1) {
                     $doctor = Doctor::where('user_id', auth()->user()->id)->first();
-                    // Surface approval status to the app so it can show pending/approved banners.
-                    $userDoctor['approval_status'] = $doctor && (int) ($doctor->is_approved ?? 0) === 1 ? 'approved' : 'pending';
+                    // Missing or mismatched clinical profiles cannot authenticate as doctors.
+                    if (! $doctor || ($doctor->user_role !== null && $doctor->user_role !== 'doctor')) {
+                        return response(['success' => false, 'msg' => 'Doctor profile not found.'], 403);
+                    }
+                    // Revoking either account or profile access must take effect on re-login.
+                    if ((int) $userDoctor->status !== 1 || (int) $doctor->status !== 1) {
+                        return response(['success' => false, 'msg' => 'You are blocked please contact to admin.'], 403);
+                    }
+                    // Pending applicants can complete onboarding, but are not given Firebase chat credentials.
                     if (isset($request->device_token)) {
                         $userDoctor->device_token = $request->device_token;
                         $userDoctor->save();
                     }
+                    // Response-only fields must be added after persistent updates.
+                    // approval_status belongs to the doctor profile, not users.
+                    $userDoctor['approval_status'] = $doctor && (int) ($doctor->is_approved ?? 0) === 1 ? 'approved' : 'pending';
                     $userDoctor['is_filled'] = $doctor->is_filled;
-                    $firebaseToken = (new FirebaseTokenService())->doctorToken($userDoctor->id);
+                    $firebaseToken = (int) $doctor->is_approved === 1
+                        ? (new FirebaseTokenService())->doctorToken($userDoctor->id)
+                        : null;
                     if ($doctor->status == 1) {
                         if ($doctor->based_on == 'subscription') {
                             $subscription = DoctorSubscription::where([['doctor_id', $doctor->id], ['status', 1]])->first();
@@ -320,6 +334,18 @@ class DoctorApiController extends Controller
         if (! $doctorId) {
             return (new UserApiController)->apiSingleAppointment($id);
         }
+        $professional = Doctor::query()->whereKey($doctorId)
+            ->where('user_id', auth()->id())->where('is_approved', 1)
+            ->where('status', 1)->first();
+        // This shared endpoint is reachable without the professional
+        // middleware. Suspend clinical-record access with the underlying
+        // user account, even when an old Passport token is still valid.
+        if ((int) (auth()->user()->status ?? 0) !== 1) {
+            return response(['success' => false, 'msg' => 'Appointment not found'], 404);
+        }
+        if (! $professional) {
+            return response(['success' => false, 'msg' => 'Appointment not found'], 404);
+        }
         (new CustomController)->cancel_max_order();
         $appointment = Appointment::with('user:id,image')->where('id', $id)->where('doctor_id', $doctorId)->first();
         if (! $appointment) {
@@ -332,7 +358,7 @@ class DoctorApiController extends Controller
         $appointment['pdf'] = '';
         if (Prescription::where('appointment_id', $id)->exists()) {
             $pdf = Prescription::where('appointment_id', $id)->first()->pdf;
-            $appointment['pdf'] = url('prescription/upload').'/'.$pdf;
+            $appointment['pdf'] = PrivatePrescriptionStorage::appointmentUrl((int) $id, $pdf);
         }
 
         return response(['success' => true, 'data' => $appointment, 'msg' => 'Doctor Today appointment']);
@@ -343,15 +369,16 @@ class DoctorApiController extends Controller
         $prescriber = Doctor::where('user_id', auth()->id())->first();
         if (! $prescriber || $prescriber->user_role === 'provider'
             || ! auth()->user()->hasRole('doctor')
-            || (int) $prescriber->is_approved !== 1) {
+            || (int) $prescriber->is_approved !== 1
+            || (int) $prescriber->status !== 1) {
             return response()->json(['success' => false,
                 'msg' => 'Prescription access requires an approved doctor account.'], 403);
         }
         $request->validate([
             'appointment_id' => 'bail|required',
-            'medicines' => 'bail|required',
-            'user_id' => 'bail|required',
-            // 'pdf' => 'bail|required'
+            'medicines' => 'bail|required|json',
+            'user_id' => 'sometimes|integer',
+            'pdf' => 'bail|nullable|file|mimes:pdf|max:10240'
         ]);
         $data = $request->all();
         $ownAppointment = Appointment::where('id', $data['appointment_id'])->where('doctor_id', $this->ownDoctorId())->first();
@@ -359,24 +386,62 @@ class DoctorApiController extends Controller
             return response(['success' => false, 'msg' => 'Appointment not found'], 404);
         }
         $data['user_id'] = $ownAppointment->user_id;
+        $decoded = json_decode($data['medicines'], true);
+        if (! is_array($decoded) || ! array_is_list($decoded) || count($decoded) < 1 || count($decoded) > 50) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'medicines' => 'A list of 1 to 50 medicines is required.',
+            ]);
+        }
         $medicine = [];
-        foreach (json_decode($data['medicines']) as $tempMedicine) {
-            $temp['medicine'] = $tempMedicine->medicine;
-            $temp['days'] = $tempMedicine->days;
-            $temp['morning'] = $tempMedicine->morning;
-            $temp['afternoon'] = $tempMedicine->afternoon;
-            $temp['night'] = $tempMedicine->night;
-            array_push($medicine, $temp);
+        foreach ($decoded as $entry) {
+            if (! is_array($entry) || ! isset($entry['medicine'])
+                || ! is_scalar($entry['medicine'])
+                || strlen((string) $entry['medicine']) > 200
+                || trim((string) $entry['medicine']) === '') {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'medicines' => 'Invalid medicine details.',
+                ]);
+            }
+            $item = ['medicine' => trim((string) $entry['medicine'])];
+            foreach (['days', 'morning', 'afternoon', 'night'] as $field) {
+                $value = $entry[$field] ?? null;
+                if (! is_scalar($value) && $value !== null) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'medicines' => 'Invalid medicine schedule.',
+                    ]);
+                }
+                $item[$field] = $value;
+            }
+            $medicine[] = $item;
         }
         $pre['medicines'] = json_encode($medicine);
         $pre['appointment_id'] = $data['appointment_id'];
         $pre['doctor_id'] = Doctor::where('user_id', auth()->user()->id)->first()->id;
         $pre['user_id'] = $data['user_id'];
-        if (isset($data['pdf'])) {
-            $pre['pdf'] = (new CustomController)->safeUpload($data['pdf'], public_path().'/prescription/upload', ['pdf']);
+        $privateFilename = null;
+        $privateStore = new PrivatePrescriptionStorage();
+        if ($request->hasFile('pdf')) {
+            if (PrivatePrescriptionStorage::enabled()) {
+                $privateFilename = $privateStore->store($request->file('pdf'));
+                $pre['pdf'] = $privateFilename;
+            } else {
+                // Backward-compatible until both apps can authorize file reads.
+                $pre['pdf'] = (new CustomController)->safeUpload(
+                    $request->file('pdf'), public_path().'/prescription/upload', ['pdf']
+                );
+            }
         }
-        $pres = Prescription::create($pre);
-        $pdf = url('prescription/upload/'.$pres->pdf);
+        try {
+            $pres = Prescription::create($pre);
+        } catch (\Throwable $error) {
+            if ($privateFilename !== null) {
+                $privateStore->discard($privateFilename);
+            }
+            throw $error;
+        }
+        $pdf = PrivatePrescriptionStorage::appointmentUrl(
+            (int) $pres->appointment_id, $pres->pdf
+        );
 
         return response(['success' => true, 'data' => $pdf, 'msg' => 'Prescription Created']);
     }
@@ -518,32 +583,72 @@ class DoctorApiController extends Controller
     public function apiStatusChange(Request $request)
     {
         (new CustomController)->cancel_max_order();
-        $request->validate([
-            'id' => 'required',
+        $validated = $request->validate([
+            'id' => 'required|integer|min:1',
             'status' => 'required|in:approve,cancel,complete',
         ]);
-        $appointment = Appointment::where('id', $request->id)->where('doctor_id', $this->ownDoctorId())->first();
-        if (! $appointment) {
+        $professional = Doctor::where('user_id', auth()->id())
+            ->where('is_approved', 1)->where('status', 1)->first();
+        if (! $professional) {
+            return response(['success' => false, 'msg' => 'Professional approval required'], 403);
+        }
+
+        // Lock the appointment through the close/settlement transition. Without
+        // this, two requests can both observe "open" and create duplicate
+        // settlement rows for a single clinical encounter.
+        $appointment = \Illuminate\Support\Facades\DB::transaction(
+            function () use ($validated, $professional) {
+                $item = Appointment::where('id', $validated['id'])
+                    ->where('doctor_id', $professional->id)
+                    ->lockForUpdate()->first();
+                if (! $item) {
+                    return null;
+                }
+                if (in_array(strtolower((string) $item->appointment_status),
+                    ['complete', 'completed', 'cancel', 'canceled'], true)) {
+                    return false;
+                }
+
+                $item->update(['appointment_status' => $validated['status']]);
+                if ($validated['status'] === 'complete' && $professional->based_on === 'commission') {
+                    Settle::firstOrCreate(
+                        ['appointment_id' => $item->id],
+                        [
+                            'doctor_id' => $item->doctor_id,
+                            'doctor_amount' => $item->doctor_commission,
+                            'admin_amount' => $item->admin_commission,
+                            'payment' => $item->payment_type !== 'COD'
+                                && (int) $item->payment_status === 1 ? 1 : 0,
+                            'doctor_status' => 0,
+                        ]
+                    );
+                }
+
+                return $item;
+            }
+        );
+        if ($appointment === null) {
             return response(['success' => false, 'msg' => 'Appointment not found'], 404);
         }
-        $appointment->update(['appointment_status' => $request->status, 'payment_status' => 1]);
-        $user = User::find($appointment->user_id);
-        $doctor = Doctor::find($appointment->doctor_id);
-        if ($request->status == 'complete') {
-            if ($doctor->based_on == 'commission') {
-                $settle = [];
-                $settle['appointment_id'] = $appointment->id;
-                $settle['doctor_id'] = $appointment->doctor_id;
-                $settle['doctor_amount'] = $appointment->doctor_commission;
-                $settle['admin_amount'] = $appointment->admin_commission;
-                $settle['payment'] = $appointment->payment_type == 'COD' ? 0 : 1;
-                $settle['doctor_status'] = 0;
-                Settle::create($settle);
-            }
+        if ($appointment === false) {
+            return response(['success' => false, 'msg' => 'Appointment already closed'], 422);
         }
-        (new CustomController)->statusChangeNotification($user, $appointment, $request->status);
-        if ($request->status == 'cancel') {
-            (new CustomController)->cancelScheduledNotification($appointment->scheduled_notification_id_patient, $appointment->scheduled_notification_id_doctor);
+
+        try {
+            $patient = User::find($appointment->user_id);
+            (new CustomController)->statusChangeNotification(
+                $patient, $appointment, $validated['status']
+            );
+            if ($validated['status'] === 'cancel') {
+                (new CustomController)->cancelScheduledNotification(
+                    $appointment->scheduled_notification_id_patient,
+                    $appointment->scheduled_notification_id_doctor
+                );
+            }
+        } catch (\Throwable $error) {
+            // An unavailable push service must not reverse a committed
+            // appointment state or leak patient/provider payloads to logs.
+            logger()->warning('Appointment status notification delivery failed.');
         }
 
         return response(['success' => true, 'msg' => 'appointment status change']);
@@ -552,7 +657,7 @@ class DoctorApiController extends Controller
     public function apiAppointmentHistory()
     {
         (new CustomController)->cancel_max_order();
-        $doctor = Doctor::with('treatment:id,name')->where('user_id', auth()->user()->id)->first();
+        $doctor = Doctor::with('treatment:id,name')->where('user_id', auth()->user()->id)->firstOrFail();
         $future = [];
         $past = [];
         $appointments = Appointment::with(['user:id,image', 'hospital:id,name,address'])->where('doctor_id', $doctor->id)->orderBy('id', 'DESC')->get(['id', 'date', 'time', 'end_time', 'duration_minutes', 'user_id', 'hospital_id', 'patient_address', 'patient_name', 'appointment_status', 'visit_type']);
@@ -562,7 +667,7 @@ class DoctorApiController extends Controller
                 $appointment['hospital'] = (object) [];
                 $appointment['hospital_id'] = 0;
             }
-            $appointment->treatment = $doctor->treatment['name'];
+            $appointment->treatment = $doctor->treatment?->name ?? '';
             $appointment->doctor_name = $doctor->name;
             $appointment->timming = new DateTime($appointment['date'].$appointment['time']);
             if ($appointment->timming >= Carbon::now(env('timezone')) && $appointment->appointment_status != 'completed' && $appointment->appointment_status != 'canceled') {
@@ -821,20 +926,31 @@ class DoctorApiController extends Controller
         $data = $request->only(['subscription_id', 'duration', 'payment_type', 'payment_token', 'payment_status']);
         $data['amount'] = (float) $plan['price'];
         $data = (new PaymentGatewayService)->resolve($data, DoctorSubscription::class, auth()->id());
-        DoctorSubscription::where([['status', 1], ['doctor_id', $doctor->id]])->update(['status' => 0]);
+        $paid = (int) ($data['payment_status'] ?? 0) === 1;
         $data['doctor_id'] = $doctor->id;
         $data['start_date'] = Carbon::now(env('timezone'))->format('Y-m-d');
         $data['end_date'] = Carbon::now(env('timezone'))->addMonths($data['duration'])->format('Y-m-d');
-        $data['status'] = 1;
-        $subscription = DoctorSubscription::create($data);
-        if ($subscription->payment_status == 1) {
-            $doctor->subscription_status = 1;
-            $doctor->save();
-        } else {
-            $doctor->subscription_status = 0;
-            $doctor->save();
-        }
-        if ($subscription->payment_type == 'FLUTTERWAVE') {
+        // An unpaid request must never become the active subscription or
+        // deactivate a previously verified/paid plan.
+        $data['status'] = $paid ? 1 : 0;
+        $subscription = \Illuminate\Support\Facades\DB::transaction(function () use ($doctor, $data, $paid) {
+            // Serialize Plus and web renewals on the same professional row.
+            Doctor::whereKey($doctor->id)->lockForUpdate()->firstOrFail();
+            if ($paid) {
+                DoctorSubscription::where([['status', 1], ['doctor_id', $doctor->id]])
+                    ->update(['status' => 0]);
+            }
+            $created = DoctorSubscription::create($data);
+            (new PaymentReceiptClaimService())->claim(
+                $data, 'subscription', (int) $created->id, (int) $doctor->user_id
+            );
+            if ($paid) {
+                $doctor->subscription_status = 1;
+                $doctor->save();
+            }
+            return $created;
+        });
+        if ($subscription->payment_type == 'FLUTTERWAVE' && ! $paid) {
             return response(['success' => true, 'url' => url('subscription_flutter/'.$subscription->id)]);
         }
 
@@ -844,33 +960,70 @@ class DoctorApiController extends Controller
     public function apiPaystackInit(Request $request)
     {
         $request->validate([
-            'amount' => 'bail|required|numeric|min:1',
-            'email' => 'bail|required|email',
-            'currency' => 'bail|required|string',
+            'amount' => 'bail|required|numeric|min:1|max:1000000000',
+            'amount_unit' => 'sometimes|in:major,minor',
+            'email' => 'sometimes|email',
+            'currency' => 'bail|required|string|max:3',
         ]);
-
         $secretKey = config('services.paystack.secret');
         if (! $secretKey) {
-            return response(['success' => false, 'msg' => 'Paystack secret key is not configured'], 500);
+            return response(['success' => false, 'msg' => 'Payment gateway unavailable'], 503);
         }
 
-        $response = Http::withToken($secretKey)->post('https://api.paystack.co/transaction/initialize', [
-            'email' => $request->email,
-            'amount' => $request->amount,
-            'currency' => $request->currency,
-        ]);
-
+        $currency = strtoupper((string) Setting::query()->value('currency_code'));
+        if ($currency === '' || strtoupper((string) $request->currency) !== $currency) {
+            return response(['success' => false, 'msg' => 'Unsupported payment currency'], 422);
+        }
+        $payer = $request->user('api');
+        if (! $payer || ! $payer->email) {
+            return response(['success' => false, 'msg' => 'Account verification required'], 403);
+        }
+        // Paystack accepts minor currency units. The payer identity and
+        // metadata must be server-derived, never client-controlled.
+        // Existing Plus clients send kobo; new clients explicitly declare major units.
+        $majorUnits = $request->input('amount_unit', 'minor') === 'major';
+        if (($majorUnits && (float) $request->amount > 10000000)
+            || (!$majorUnits && (float) $request->amount !== floor((float) $request->amount))) {
+            return response(['success' => false, 'msg' => 'Invalid payment amount'], 422);
+        }
+        $amountMinor = (int) round(((float) $request->amount) * ($majorUnits ? 100 : 1));
+        $callbackUrl = rtrim((string) config('app.url'), '/').'/api/paystack/return';
+        try {
+        $response = Http::withToken($secretKey)
+            ->timeout(20)->withOptions(['allow_redirects' => false])
+            ->post('https://api.paystack.co/transaction/initialize', [
+                'email' => $payer->email,
+                'amount' => $amountMinor,
+                'currency' => $currency,
+                'metadata' => ['user_id' => (string) $payer->id],
+                'callback_url' => $callbackUrl,
+            ]);
+        } catch (\Throwable $exception) {
+            logger()->warning('Paystack checkout initialization unavailable.');
+            return response(['success' => false, 'msg' => 'Paystack initialization failed'], 502);
+        }
         if (! $response->successful()) {
-            return response(['success' => false, 'msg' => 'Paystack initialization failed', 'data' => $response->json()], 500);
+            return response(['success' => false, 'msg' => 'Paystack initialization failed'], 502);
         }
 
         $data = $response->json('data');
-
+        $checkout = is_array($data) ? parse_url((string) ($data['authorization_url'] ?? '')) : false;
+        if ($response->json('status') !== true || !is_array($data)
+            || !is_string($data['reference'] ?? null) || !preg_match('/^[A-Za-z0-9._=-]{1,200}$/D', $data['reference'])
+            || !is_string($data['access_code'] ?? null) || $data['access_code'] === ''
+            || !is_array($checkout) || ($checkout['scheme'] ?? '') !== 'https'
+            || !in_array(strtolower($checkout['host'] ?? ''), ['checkout.paystack.com', 'checkout.paystack.co', 'standard.paystack.co'], true)
+            || isset($checkout['user']) || isset($checkout['pass']) || isset($checkout['fragment'])
+            || (isset($checkout['port']) && $checkout['port'] !== 443)) {
+            return response(['success' => false, 'msg' => 'Paystack initialization failed'], 502);
+        }
         return response([
             'success' => true,
             'data' => [
                 'access_code' => $data['access_code'] ?? null,
                 'reference' => $data['reference'] ?? null,
+                'authorization_url' => $data['authorization_url'],
+                'callback_url' => $callbackUrl,
             ],
         ]);
     }
@@ -926,7 +1079,8 @@ class DoctorApiController extends Controller
         $request->validate([
             'to_id' => 'bail|required|integer',
         ]);
-        $doctor = Doctor::where('user_id', auth()->id())->firstOrFail();
+        $doctor = Doctor::where('user_id', auth()->id())
+            ->where('is_approved', 1)->where('status', 1)->firstOrFail();
         if (! Appointment::hasOpenBooking((int) $request->to_id, $doctor->id, 'video_call')) {
             return response()->json(['success' => false, 'msg' => 'You can only call a patient with a booked virtual consultation.'], 403);
         }
@@ -1024,7 +1178,8 @@ class DoctorApiController extends Controller
         }
 
         $doctorUser = $request->user();
-        $doctor = $doctorUser ? Doctor::where('user_id', $doctorUser->id)->first() : null;
+        $doctor = $doctorUser ? Doctor::where('user_id', $doctorUser->id)
+            ->where('is_approved', 1)->where('status', 1)->first() : null;
         $recipient = User::where('device_token', $request->input('to_device_token'))->first();
 
         if (! $doctor || ! $recipient || ! Appointment::query()

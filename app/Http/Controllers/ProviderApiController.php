@@ -77,6 +77,8 @@ class ProviderApiController extends Controller
         }
         $data['since'] = Carbon::now(env('timezone'))->format('Y-m-d , h:i A');
         $data['status'] = 1;
+        // Provider credentials require independent admin approval before access.
+        $data['is_approved'] = 0;
         $data['name'] = $user->name;
         $data['dob'] = $request->dob;
         $data['gender'] = $request->gender;
@@ -128,9 +130,9 @@ class ProviderApiController extends Controller
                 $userProvider['token'] = $user->createToken('doctro')->accessToken;
                 $userProvider['is_filled'] = $doctor->is_filled;
                 $userProvider['user_role'] = 'provider';
-
-                $firebase = new FirebaseTokenService();
-                $userProvider['firebase_custom_token'] = $firebase->providerToken($user->id);
+                $userProvider['approval_status'] = 'pending';
+                // Do not issue Firebase chat credentials before professional verification.
+                $userProvider['firebase_custom_token'] = null;
 
                 return response(['success' => true, 'data' => $userProvider, 'msg' => 'Register Successfully']);
             }
@@ -157,10 +159,10 @@ class ProviderApiController extends Controller
             $user = Auth::user()->load('roles');
             if ($user->hasRole('provider')) {
                 $doctor = Doctor::where('user_id', auth()->user()->id)->first();
-                if (! $doctor) {
-                    return response(['success' => false, 'msg' => 'Provider profile not found.']);
+                if (! $doctor || $doctor->user_role !== 'provider') {
+                    return response(['success' => false, 'msg' => 'Provider profile not found.'], 403);
                 }
-                if ($doctor->status != 1) {
+                if ((int) $user->status !== 1 || (int) $doctor->status !== 1) {
                     return response(['success' => false, 'msg' => 'You are blocked please contact to admin.']);
                 }
                 if ($user->verify != 1) {
@@ -179,12 +181,15 @@ class ProviderApiController extends Controller
                 $user['image'] = $doctor->fullImage;
                 $user['is_filled'] = $doctor->is_filled;
                 $user['user_role'] = 'provider';
+                $user['approval_status'] = (int) $doctor->is_approved === 1 ? 'approved' : 'pending';
                 $user->makeHidden(['email_verified_at', 'dob', 'gender', 'status', 'doctor_id']);
                 $user['device_token'] = $user['device_token'] == null ? '' : $user['device_token'];
                 $user['language'] = $user['language'] == null ? '' : $user['language'];
                 $user['channel_name'] = $user['channel_name'] == null ? '' : $user['channel_name'];
                 $user['agora_token'] = $user['agora_token'] == null ? '' : $user['agora_token'];
-                $user['firebase_custom_token'] = (new FirebaseTokenService())->providerToken($user->id);
+                $user['firebase_custom_token'] = (int) $doctor->is_approved === 1
+                    ? (new FirebaseTokenService())->providerToken($user->id)
+                    : null;
 
                 return response(['success' => true, 'data' => $user, 'msg' => 'Provider Login successfully']);
             }

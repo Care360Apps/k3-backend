@@ -3,6 +3,7 @@
 @section('title',__('Test Reports'))
 
 @section('content')
+<p><a href="{{ url('lab_clinical_requests') }}">{{ __('Doctor investigation requests and critical acknowledgements') }}</a></p>
 <section class="section">
     @include('layout.breadcrumb',[
         'title' => __('Test Reports'),
@@ -26,7 +27,7 @@
                                     <th>{{__('Laboratory Name')}}</th>
                                     <th>{{__('Report')}}</th>
                                 @endif
-                                <th>{{__('Prescription')}}</th>
+                                <th>{{ __("Workflow / release") }}</th><th>{{__('Prescription')}}</th>
                                 <th>{{__('Date time')}}</th>
                                 <th>{{__('Payment Type')}}</th>
                                 <th>{{__('Amount')}}</th>
@@ -44,7 +45,9 @@
                                     @if (!auth()->user()->hasRole('laboratory') && Gate::check('test_report'))
                                     <td>{{ $test_report->lab['name'] }}</td>
                                         <td>
-                                            @if ($test_report->upload_report == null)
+                                            @if ($test_report->private_result_name)
+                                                <a href="{{ url('lab_results/'.$test_report->id.'/file') }}">{{ __('Private result') }}</a>
+                                            @elseif ($test_report->upload_report == null)
                                                 {{ __('Report Not Available.') }}
                                             @else
                                                 <a href="{{ 'report_prescription/report/'.$test_report->upload_report }}" data-fancybox="gallery2">
@@ -53,7 +56,24 @@
                                             @endif
                                         </td>
                                     @endif
-                                    <td class="d-flex">
+                                    <td>
+                                        <p>{{ str_replace('_',' ', $test_report->workflow_status ?? 'booked') }}</p>
+                                        @if($test_report->private_result_name)
+                                        <a href="{{ url('lab_results/'.$test_report->id.'/file') }}">{{ __('Review private result') }}</a>
+                                        @endif
+                                        @if(!in_array($test_report->workflow_status,['released','cancelled']))
+                                        <form method="post" action="{{ url('lab_results/status') }}">@csrf
+                                          <input type="hidden" name="report_id" value="{{ $test_report->id }}">
+                                          <label>Status <select name="status" required>
+                                            <option value="">Select next step</option>
+                                            @foreach(\App\Services\LabWorkflowService::TRANSITIONS[$test_report->workflow_status ?? 'booked'] ?? [] as $step)
+                                            <option value="{{ $step }}">{{ str_replace('_',' ',$step) }}</option>
+                                            @endforeach
+                                          </select></label><button type="submit">{{ __('Update') }}</button>
+                                        </form>
+                                        @endif
+                                      </td>
+                                      <td class="d-flex">
                                         @if ($test_report->prescription != null)
                                             <a href="{{ 'report_prescription/upload/'.$test_report->prescription }}" data-fancybox="gallery2">
                                                 <img src="{{ 'report_prescription/upload/'.$test_report->prescription}}" alt="Feature Image" width="50px" height="50px">
@@ -78,7 +98,9 @@
                                             </select>
                                         </td>
                                         <td>
-                                            @if ($test_report->upload_report == null)
+                                            @if ($test_report->private_result_name)
+                                                <a href="{{ url('lab_results/'.$test_report->id.'/file') }}">{{ __('Private result') }}</a>
+                                            @elseif ($test_report->upload_report == null)
                                                 <a onclick="upload_report({{ $test_report->id }})" class="text-info ml-2" href="#upload_report" data-toggle="modal">
                                                     {{__('Upload Report')}}
                                                 </a>
