@@ -153,5 +153,5 @@ jobs:
         run: echo "APP_KEY=base64:$(php -r 'echo base64_encode(random_bytes(32));')" >> "$GITHUB_ENV"
       - name: Ephemeral Passport keys for the synthetic API guard
         run: php artisan passport:keys --no-interaction
-      - name: Test private prescription storage, ownership, rollback and isolated workforce
-        run: php artisan test --filter='(PaystackCheckoutTest|CareerTrainingWorkflowTest|PrivatePrescriptionAccessTest|PrivatePrescriptionWriteTest|LegacyPrescriptionStagingTest|ApprovedProfessionalAccessTest|AtomicPaymentReceiptClaimTest|WorkforcePilotTest|DoctorWorkspaceTest|ClinicalWorkflowTest|MedicineBulkWorkflowTest|LabWorkflowTest|PatientDiscoveryPublicationTest)' --stop-on-failure
+      - name: Test clinical workflows, facility-directory publication and CSV import safety
+        run: php artisan test --filter='(PaystackCheckoutTest|CareerTrainingWorkflowTest|PrivatePrescriptionAccessTest|PrivatePrescriptionWriteTest|LegacyPrescriptionStagingTest|ApprovedProfessionalAccessTest|AtomicPaymentReceiptClaimTest|WorkforcePilotTest|DoctorWorkspaceTest|ClinicalWorkflowTest|MedicineBulkWorkflowTest|LabWorkflowTest|PatientDiscoveryPublicationTest|FacilityDirectoryApiTest|FacilityDirectoryCsvImportTest)' --stop-on-failure
