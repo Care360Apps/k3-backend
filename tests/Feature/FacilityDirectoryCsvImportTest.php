@@ -3,12 +3,12 @@
 namespace Tests\Feature;
 
 use App\Models\FacilityDirectory;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Feature\Concerns\CreatesFacilityDirectorySchema;
 use Tests\TestCase;
 
 class FacilityDirectoryCsvImportTest extends TestCase
 {
-    use RefreshDatabase;
+    use CreatesFacilityDirectorySchema;
 
     private function csv(string $body): string
     {
