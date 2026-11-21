@@ -62,6 +62,7 @@ Auth::routes();
 // Facility directory review — restricted to super admins by controller checks.
 Route::middleware(['auth', 'throttle:30,1'])->prefix('admin/facility-directory')->group(function () {
     $controller = \App\Http\Controllers\SuperAdmin\FacilityDirectoryAdminController::class;
+    Route::get('/manage', [$controller, 'page'])->name('facility.directory.page');
     Route::get('/', [$controller, 'index']);
     Route::post('/', [$controller, 'store']);
     Route::post('/{id}/review', [$controller, 'review'])->whereNumber('id');
