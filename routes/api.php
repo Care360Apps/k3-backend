@@ -1,4 +1,8 @@
 <?php
+// Public, reviewed-only facility directory (no merchant account creation).
+Route::get('directory/v1/facilities', [\App\Http\Controllers\FacilityDirectoryController::class, 'index'])->middleware('throttle:60,1');
+Route::get('directory/v1/facilities/{id}', [\App\Http\Controllers\FacilityDirectoryController::class, 'show'])->whereNumber('id')->middleware('throttle:60,1');
+
 
 use App\Http\Controllers\DoctorApiController;
 use App\Http\Controllers\DoctorNoteController;
