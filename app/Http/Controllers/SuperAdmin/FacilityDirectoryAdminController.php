@@ -15,6 +15,13 @@ class FacilityDirectoryAdminController extends Controller
         abort_unless($request->user() && $request->user()->hasRole('super admin'), 403);
     }
 
+    public function page(Request $request)
+    {
+        $this->authorizeAdmin($request);
+        $facilities = FacilityDirectory::query()->orderByDesc('id')->paginate(25);
+        return view('superAdmin.facility_directory.index', compact('facilities'));
+    }
+
     public function index(Request $request)
     {
         $this->authorizeAdmin($request);
@@ -47,7 +54,9 @@ class FacilityDirectoryAdminController extends Controller
         $data['review_status'] = 'pending';
         $data['listing_status'] = 'draft';
         $data['partner_status'] = 'none';
-        return response()->json(['data' => FacilityDirectory::create($data)], 201);
+        $facility = FacilityDirectory::create($data);
+        if (!$request->expectsJson()) return redirect()->route('facility.directory.page')->with('status', 'Draft facility created.');
+        return response()->json(['data' => $facility], 201);
     }
 
     public function review(Request $request, int $id)
@@ -88,6 +97,7 @@ class FacilityDirectoryAdminController extends Controller
             ]);
             return $facility;
         });
+        if (!$request->expectsJson()) return redirect()->route('facility.directory.page')->with('status', 'Review decision recorded.');
         return response()->json(['data' => $facility])->header('Cache-Control', 'no-store');
     }
 }
