@@ -59,6 +59,15 @@ use Illuminate\Support\Facades\Route;
 */
 Auth::routes();
 
+// Facility directory review — restricted to super admins by controller checks.
+Route::middleware(['auth', 'throttle:30,1'])->prefix('admin/facility-directory')->group(function () {
+    $controller = \App\Http\Controllers\SuperAdmin\FacilityDirectoryAdminController::class;
+    Route::get('/', [$controller, 'index']);
+    Route::post('/', [$controller, 'store']);
+    Route::post('/{id}/review', [$controller, 'review'])->whereNumber('id');
+});
+
+
 // Route::get('installer',[AdminController::class,'installer']);
 Route::any('installer', [AdminController::class, 'installer']);
 
