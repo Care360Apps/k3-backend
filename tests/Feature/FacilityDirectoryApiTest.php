@@ -3,12 +3,12 @@
 namespace Tests\Feature;
 
 use App\Models\FacilityDirectory;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Feature\Concerns\CreatesFacilityDirectorySchema;
 use Tests\TestCase;
 
 class FacilityDirectoryApiTest extends TestCase
 {
-    use RefreshDatabase;
+    use CreatesFacilityDirectorySchema;
 
     public function test_only_verified_published_facilities_are_public(): void
     {
