@@ -16,6 +16,7 @@ use Carbon\Carbon;
 use Hash;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\Rule;
 
 class ProviderApiController extends Controller
 {
@@ -42,7 +43,7 @@ class ProviderApiController extends Controller
             'phone' => 'bail|required|numeric',
             'password' => 'bail|required|min:6',
             'phone_code' => 'bail|required',
-            'provider_type_id' => 'bail|required|exists:provider_types,id',
+            'provider_type_id' => ['bail', 'required', Rule::exists('provider_types', 'id')->where('status', 1)],
         ] + DoctorDocumentService::rules(false), DoctorDocumentService::messages());
 
         $data = $request->except('documents');
