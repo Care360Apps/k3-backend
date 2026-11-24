@@ -37,6 +37,7 @@
                             @enderror
                         </div>
                         <div class="col-lg-10 col-md-8">
+                            @include('superAdmin.course.catalogue_controls')
                             <div class="form-group">
                                 <label class="col-form-label">{{__('Course Title')}}</label>
                                 <input type="text" value="{{ old('title') }}" name="title" class="form-control @error('title') is-invalid @enderror">
@@ -56,8 +57,8 @@
                                 @enderror
                             </div>
                             <div class="form-group">
-                                <label class="col-form-label">{{__('Amount')}}</label>
-                                <input type="number" step="0.01" value="{{ old('amount') }}" name="amount" class="form-control @error('amount') is-invalid @enderror">
+                                <label class="col-form-label">{{__('Tuition (NGN)')}}</label>
+                                <input type="number" step="0.01" value="{{ old('amount') }}" name="amount" min="0" placeholder="Contact for tuition" class="form-control @error('amount') is-invalid @enderror">
                                 @error('amount')
                                     <div class="invalid-feedback">
                                         {{ $message }}
@@ -65,7 +66,7 @@
                                 @enderror
                             </div>
                             <div class="form-group">
-                                <label class="col-form-label">{{__('Link')}}</label>
+                                <label class="col-form-label">{{__('External application link (HTTPS)')}}</label>
                                 <input type="text" value="{{ old('link') }}" name="link" class="form-control @error('link') is-invalid @enderror">
                                 @error('link')
                                     <div class="invalid-feedback">
@@ -86,7 +87,7 @@
                     </div>
                     <div class="form-group">
                         <label class="col-form-label">{{__('Course Details')}}</label>
-                        <textarea name="details" class="summernote form-control @error('details') is-invalid @enderror">{{ old('details') }}</textarea>
+                        <textarea name="details" class="form-control @error('details') is-invalid @enderror">{{ old('details') }}</textarea>
                         @error('details')
                             <div class="invalid-feedback">
                                 {{ $message }}

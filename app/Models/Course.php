@@ -20,14 +20,18 @@ class Course extends Model
         'duration',
         'amount',
         'link',
+        'provider',
+        'is_published',
     ];
+
+    protected $casts = ['is_published' => 'boolean', 'amount' => 'decimal:2'];
 
     protected $appends = ['fullImage'];
 
     protected function getFullImageAttribute()
     {
         if ($this->image) {
-            return url('images/upload').'/'.$this->image;
+            return secure_url('api/course-images/'.rawurlencode(basename($this->image)));
         }
 
         return url('images/upload_empty/defaultUser.png');

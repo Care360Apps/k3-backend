@@ -33,26 +33,50 @@ class CourseController extends Controller
         return view('superAdmin.course.create_course');
     }
 
+    private function courseData(Request $request, bool $new): array
+    {
+        if (trim((string) $request->input('amount', '')) === '') {
+            $request->merge(['amount' => null]);
+        }
+        $data = $request->validate([
+            'title' => ['required','string','max:255'],
+            'provider' => ['required','in:cnu,speakout'],
+            'summary' => ['required','string','max:2000'],
+            'details' => ['required','string','max:30000'],
+            'duration' => ['required','string','max:120'],
+            'amount' => ['nullable','numeric','min:0','max:99999999.99','decimal:0,2'],
+            'image' => [$new ? 'required' : 'nullable','image','mimes:jpeg,png,jpg','max:2048'],
+            'is_published' => ['required','boolean'],
+            'link' => ['required','string','max:255', function($attribute,$value,$fail) use ($request) {
+                if (! \App\Services\SafePartnerLink::isValidHttps($value)) {
+                    $fail('Enter a public HTTPS application link.');
+                }
+                $host = strtolower((string) parse_url($value, PHP_URL_HOST));
+                if ($request->input('provider') === 'speakout'
+                    && $host !== 'speakoutmentalhealth.org' && ! str_ends_with($host,'.speakoutmentalhealth.org')) {
+                    $fail('SpeakOut registration must use the existing SpeakOut website.');
+                }
+            }],
+        ]);
+        if ($data['provider'] === 'speakout') {
+            $data['amount'] = 0;
+        } elseif ($data['amount'] !== null && (float) $data['amount'] <= 0) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['amount'=>'CNU tuition must be greater than zero, or blank for Contact for tuition.']);
+        }
+        foreach (['title','summary','details','duration'] as $field) {
+            $data[$field] = trim(strip_tags($data[$field]));
+            if ($data[$field] === '') {
+                throw \Illuminate\Validation\ValidationException::withMessages([$field=>'Enter visible text.']);
+            }
+        }
+        return $data;
+    }
+
     public function store(Request $request)
     {
         abort_if(Gate::denies('course_add'), Response::HTTP_FORBIDDEN, '403 Forbidden');
-        $request->validate([
-            'title' => 'bail|required|string|max:255',
-            'summary' => 'bail|required|string',
-            'details' => 'bail|required|string',
-            'image' => 'bail|required|mimes:jpeg,png,jpg|max:1000',
-            'duration' => 'bail|required|string|max:120',
-            'amount' => 'bail|required|numeric|min:0',
-            'link' => 'bail|required|url|max:255',
-        ],
-            [
-                'image.max' => 'The Image May Not Be Greater Than 1 MegaBytes.',
-            ]);
-
-        $data = $request->all();
-        if ($request->hasFile('image')) {
-            $data['image'] = (new CustomController)->imageUpload($request->image);
-        }
+        $data = $this->courseData($request, true);
+        $data['image'] = (new CustomController)->imageUpload($request->file('image'));
 
         Course::create($data);
 
@@ -70,27 +94,13 @@ class CourseController extends Controller
     public function update(Request $request, $id)
     {
         abort_if(Gate::denies('course_edit'), Response::HTTP_FORBIDDEN, '403 Forbidden');
-        $request->validate([
-            'title' => 'bail|required|string|max:255',
-            'summary' => 'bail|required|string',
-            'details' => 'bail|required|string',
-            'image' => 'bail|mimes:jpeg,png,jpg|max:1000',
-            'duration' => 'bail|required|string|max:120',
-            'amount' => 'bail|required|numeric|min:0',
-            'link' => 'bail|required|url|max:255',
-        ],
-            [
-                'image.max' => 'The Image May Not Be Greater Than 1 MegaBytes.',
-            ]);
-
         $course = Course::findOrFail($id);
-        $data = $request->all();
-
+        $data = $this->courseData($request, false);
         if ($request->hasFile('image')) {
-            if ($course->image) {
-                (new CustomController)->deleteFile($course->image);
-            }
-            $data['image'] = (new CustomController)->imageUpload($request->image);
+            // Store first so a failed upload cannot destroy the existing image.
+            $data['image'] = (new CustomController)->imageUpload($request->file('image'));
+        } else {
+            unset($data['image']);
         }
 
         $course->update($data);

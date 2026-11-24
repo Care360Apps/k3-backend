@@ -26,7 +26,7 @@
                                 <th>#</th>
                                 <th>{{__('Image')}}</th>
                                 <th>{{__('Title')}}</th>
-                                <th>{{__('Duration')}}</th>
+                                <th>Provider / publication</th><th>{{__('Duration')}}</th>
                                 <th>{{__('Amount')}}</th>
                                 <th>{{__('Link')}}</th>
                                 <th>{{__('Summary')}}</th>
@@ -45,10 +45,10 @@
                                         </a>
                                     </td>
                                     <td>{{ $course->title }}</td>
-                                    <td>{{ $course->duration }}</td>
-                                    <td>{{ number_format($course->amount, 2) }}</td>
+                                    <td>{{ $course->provider === 'speakout' ? 'SpeakOut' : 'CNU' }} / {{ $course->is_published ? 'Published' : 'Draft' }}</td><td>{{ $course->duration }}</td>
+                                    <td>{{ $course->provider === 'speakout' ? '100% free' : ($course->amount > 0 ? 'NGN '.number_format($course->amount, 2) : 'Contact for tuition') }}</td>
                                     <td>
-                                        <a href="{{ $course->link }}" target="_blank">{{ __('Open') }}</a>
+                                        <a href="{{ $course->link }}" target="_blank" rel="noopener noreferrer">{{ __('Open') }}</a>
                                     </td>
                                     <td>{{ \Illuminate\Support\Str::limit(strip_tags($course->summary), 80) }}</td>
                                     @if (Gate::check('course_edit') || Gate::check('course_delete'))
