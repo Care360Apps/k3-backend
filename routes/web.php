@@ -308,6 +308,7 @@ Route::group(['middleware' => ['XssSanitizer']], function () {
         Route::POST('/doctor/change_status', [DoctorController::class, 'change_status']);
         Route::POST('/doctor/change_approval_status', [DoctorController::class, 'change_approval_status']);
         Route::POST('/user/change_status', [UserController::class, 'change_status']);
+        Route::get('banner-image-preview/{id}', [\App\Http\Controllers\BannerImageController::class, 'preview'])->whereNumber('id')->name('banner.image.preview');
         Route::POST('/banner/change_status', [BannerController::class, 'change_status']);
         Route::POST('/pharmacy/change_status', [pharmacyController::class, 'change_status']);
         Route::POST('/medicineCategory/change_status', [MedicineCategoryController::class, 'change_status']);
