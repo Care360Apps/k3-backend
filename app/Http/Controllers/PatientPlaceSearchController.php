@@ -146,6 +146,9 @@ class PatientPlaceSearchController extends Controller
             'place_id' => ['required', 'string', config('services.care360_places.provider') === 'geoapify' ? 'regex:/^[a-fA-F0-9]{8,512}$/D' : 'regex:/^[a-zA-Z0-9_-]{8,220}$/'],
             'session_token' => ['required', 'uuid'],
         ]);
+        if (config('services.care360_places.provider') === 'geoapify') {
+            return $this->geoapify($request, $data, true);
+        }
         if (!($key = $this->placesKey())) {
             return $this->disabledResponse();
         }
