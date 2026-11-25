@@ -656,6 +656,13 @@ class UserApiController extends Controller
         // concurrent request wins the unique receipt index, the order and
         // offer-use increment roll back together.
         $appointment = DB::transaction(function () use ($data, $offer) {
+            // Serialize API bookings for this professional before rechecking availability.
+            Doctor::whereKey($data['doctor_id'])->lockForUpdate()->firstOrFail();
+            if (! (new CustomController)->slotAvailable($data['doctor_id'], $data['date'], $data['time'], $data['duration_minutes'])) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'time' => 'This slot is no longer available.',
+                ]);
+            }
             $created = Appointment::create($data);
             (new PaymentReceiptClaimService())->claim(
                 $data, 'appointment', (int) $created->id, (int) $created->user_id
