@@ -13,6 +13,56 @@ use Illuminate\Support\Facades\Http;
  */
 class PatientPlaceSearchController extends Controller
 {
+
+    private function geoapify(Request $request, array $data, bool $details)
+    {
+        $key = trim((string) config('services.care360_places.geoapify_key', ''));
+        if ($key === '') return $this->disabledResponse();
+
+        // Shared budget for address search only; reserve capacity for other APIs.
+        // Atomic cache increment on the configured shared production cache.
+        $budgetKey = 'geoapify-address-budget:'.gmdate('Y-m-d');
+        Illuminate\Support\Facades\Cache::add($budgetKey, 0, 172800);
+        if (\Illuminate\Support\Facades\Cache::increment($budgetKey) > 2000) {
+            return response()->json(['success' => false, 'code' => 'PLACES_UNAVAILABLE'], 503);
+        }
+        try {
+            $http = Http::acceptJson()->timeout(6)->connectTimeout(3)->withOptions(['allow_redirects' => false]);
+            $response = $details
+                ? $http->get('https://api.geoapify.com/v2/place-details', ['id' => $data['place_id'], 'apiKey' => $key])
+                : $http->get('https://api.geoapify.com/v1/geocode/autocomplete', [
+                    'text' => trim($data['query']), 'filter' => 'countrycode:ng',
+                    'format' => 'json', 'limit' => 8, 'lang' => 'en', 'apiKey' => $key,
+                ]);
+            if (!$response->successful()) return response()->json(['success' => false, 'code' => 'PLACES_UNAVAILABLE'], 502);
+            if (!$details) {
+                $items = [];
+                foreach ((array) $response->json('results', []) as $item) {
+                    $id = $item['place_id'] ?? '';
+                    $label = $item['formatted'] ?? '';
+                    if (!is_string($id) || !preg_match('/^[a-fA-F0-9]{8,512}$/D', $id)
+                        || !is_string($label) || trim($label) === '' || ($item['country_code'] ?? '') !== 'ng') continue;
+                    $items[] = ['place_id' => $id, 'description' => mb_substr($label, 0, 220)];
+                    if (count($items) >= 8) break;
+                }
+                return response()->json(['success' => true, 'data' => $items]);
+            }
+            $p = $response->json('features.0.properties', []);
+            $lat = $p['lat'] ?? null;
+            $lon = $p['lon'] ?? null;
+            $address = $p['formatted'] ?? null;
+            if (!is_numeric($lat) || !is_numeric($lon) || abs((float) $lat) > 90 || abs((float) $lon) > 180
+                || !is_string($address) || trim($address) === '' || ($p['country_code'] ?? '') !== 'ng') {
+                return response()->json(['success' => false, 'code' => 'PLACE_INCOMPLETE'], 502);
+            }
+            return response()->json(['success' => true, 'data' => [
+                'address' => mb_substr($address, 0, 255), 'latitude' => (float) $lat, 'longitude' => (float) $lon,
+            ]]);
+        } catch (ConnectionException $e) {
+            return response()->json(['success' => false, 'code' => 'PLACES_UNAVAILABLE'], 503);
+        }
+    }
+
     private function placesKey(): ?string
     {
         $key = trim((string) config('services.google_places.key', ''));
@@ -39,6 +89,7 @@ class PatientPlaceSearchController extends Controller
         if (mb_strlen($query) < 3) {
             return response()->json(['success' => false, 'code' => 'QUERY_TOO_SHORT'], 422);
         }
+        if (config('services.care360_places.provider') === 'geoapify') return $this->geoapify($request, $data, false);
         if (!($key = $this->placesKey())) {
             return $this->disabledResponse();
         }
@@ -92,7 +143,7 @@ class PatientPlaceSearchController extends Controller
     public function details(Request $request)
     {
         $data = $request->validate([
-            'place_id' => ['required', 'string', 'regex:/^[a-zA-Z0-9_-]{8,220}$/'],
+            'place_id' => ['required', 'string', config('services.care360_places.provider') === 'geoapify' ? 'regex:/^[a-fA-F0-9]{8,512}$/D' : 'regex:/^[a-zA-Z0-9_-]{8,220}$/'],
             'session_token' => ['required', 'uuid'],
         ]);
         if (!($key = $this->placesKey())) {
