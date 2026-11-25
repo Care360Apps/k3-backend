@@ -18,6 +18,16 @@ final class AuditPaymentReceipts extends Command
             $claims = Schema::hasTable('payment_receipt_claims');
             $this->line('Claim table present: '.($claims ? 'yes' : 'no'));
             $this->line('Atomic gate enabled: '.(config('payment_security.atomic_receipt_claims') ? 'yes' : 'no'));
+            $unique = false;
+            if ($claims) {
+                foreach (Schema::getIndexes('payment_receipt_claims') as $index) {
+                    if (($index['unique'] ?? false) && ($index['columns'] ?? []) === ['receipt_sha256']) {
+                        $unique = true;
+                        break;
+                    }
+                }
+            }
+            $this->line('Unique receipt hash index present: '.($unique ? 'yes' : 'no'));
             $union = null;
             $missing = 0;
             foreach ($tables as $table) {
@@ -43,8 +53,8 @@ final class AuditPaymentReceipts extends Command
             if ($claims) {
                 $this->line('Existing claim rows: '.DB::table('payment_receipt_claims')->count());
             }
-            $this->warn('Aggregate audit only; index, ownership, backfill and concurrency still require verification.');
-            return $claims && $missing === 0 && $duplicateCount === 0 ? self::SUCCESS : self::FAILURE;
+            $this->warn('Aggregate audit only; ownership, backfill and concurrency still require verification.');
+            return $claims && $unique && $missing === 0 && $duplicateCount === 0 ? self::SUCCESS : self::FAILURE;
         } catch (\Throwable $exception) {
             $this->error('Receipt audit unavailable; inspect schema and database connectivity privately.');
             return self::FAILURE;
