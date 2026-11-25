@@ -210,6 +210,7 @@ Route::group(['middleware' => ['XssSanitizer']], function () {
         // pending blog
         Route::get('/blog/pending-blog', [BlogController::class, 'pending_blog']);
 
+        Route::get('course-image-preview/{id}', [\App\Http\Controllers\CourseImageController::class, 'preview'])->whereNumber('id')->name('course.image.preview');
         Route::get('course/deleted', [CourseController::class, 'deleted']);
         Route::get('course/restore/{id}', [CourseController::class, 'restore']);
         Route::delete('course/force-delete/{id}', [CourseController::class, 'forceDelete']);
