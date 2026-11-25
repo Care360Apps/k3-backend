@@ -27,7 +27,7 @@
                                     <label for="image"></label>
                                 </div>
                                 <div class="avatar-preview">
-                                    <div id="imagePreview" style="background-image: url({{ $course->fullImage }});">
+                                    <div id="imagePreview" style="background-image: url({{ ($course->image ? route('course.image.preview', ['id' => $course->id]) : $course->fullImage) }});">
                                     </div>
                                 </div>
                             </div>
