@@ -22,7 +22,7 @@ class PatientPlaceSearchController extends Controller
         // Shared budget for address search only; reserve capacity for other APIs.
         // Atomic cache increment on the configured shared production cache.
         $budgetKey = 'geoapify-address-budget:'.gmdate('Y-m-d');
-        Illuminate\Support\Facades\Cache::add($budgetKey, 0, 172800);
+        \Illuminate\Support\Facades\Cache::add($budgetKey, 0, 172800);
         if (\Illuminate\Support\Facades\Cache::increment($budgetKey) > 2000) {
             return response()->json(['success' => false, 'code' => 'PLACES_UNAVAILABLE'], 503);
         }
