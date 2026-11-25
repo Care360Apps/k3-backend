@@ -73,13 +73,36 @@ class TrainsCatalogueTest extends TestCase {
         $request=Request::create('/course','POST',$this->input());
         $request->files->set('image', UploadedFile::fake()->image('synthetic.jpg',16,16));
         (new CourseController)->store($request);
-        $c=Course::firstOrFail(); $path=public_path('images/upload/'.$c->image);
+        $c=Course::firstOrFail(); $path=storage_path('app/course-images/'.$c->image);
         try {
             $this->assertFileExists($path);
+            $this->assertFileDoesNotExist(public_path('images/upload/'.$c->image));
             $this->get('/api/course-images/'.$c->image)->assertOk()->assertHeader('Content-Type','image/jpeg');
             $c->update(['is_published'=>false]);
             $this->get('/api/course-images/'.$c->image)->assertNotFound();
             $this->assertStringStartsWith('https://',$c->fullImage);
+        } finally { @unlink($path); }
+    }
+    public function test_draft_preview_requires_course_permission(): void {
+        $c=$this->course();
+        Gate::shouldReceive('allows')->with('course_access')->andReturn(false);
+        Gate::shouldReceive('allows')->with('course_edit')->andReturn(false);
+        $this->expectException(\Symfony\Component\HttpKernel\Exception\HttpException::class);
+        (new \App\Http\Controllers\CourseImageController)->preview($c->id);
+    }
+    public function test_authorized_draft_preview_reads_private_image(): void {
+        Gate::shouldReceive('denies')->with('course_add')->andReturn(false);
+        Gate::shouldReceive('allows')->with('course_access')->andReturn(true);
+        $request=Request::create('/course','POST',$this->input(['is_published'=>'0']));
+        $request->files->set('image', UploadedFile::fake()->image('draft.png',16,16));
+        (new CourseController)->store($request);
+        $c=Course::firstOrFail();
+        $path=storage_path('app/course-images/'.$c->image);
+        try {
+            $this->get('/api/course-images/'.$c->image)->assertNotFound();
+            $response=(new \App\Http\Controllers\CourseImageController)->preview($c->id);
+            $this->assertSame(200,$response->getStatusCode());
+            $this->assertSame('image/png',$response->headers->get('Content-Type'));
         } finally { @unlink($path); }
     }
     public function test_non_images_cannot_be_uploaded(): void {
