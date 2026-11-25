@@ -41,6 +41,10 @@ return [
     'razorpay' => [
         'secret' => env('RAZORPAY_KEY_SECRET'),
     ],
+    'care360_places' => [
+        'provider' => env('CARE360_PLACES_PROVIDER', 'google'),
+        'geoapify_key' => env('GEOAPIFY_API_KEY', ''),
+    ],
     'google_places' => [
         // Dedicated backend-only Places API (New) key, restricted by server IP.
         'key' => env('K3_PLACES_SERVER_API_KEY', ''),
