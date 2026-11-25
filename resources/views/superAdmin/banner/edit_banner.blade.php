@@ -30,7 +30,7 @@
                                     <label for="image"></label>
                                 </div>
                                 <div class="avatar-preview">
-                                    <div id="imagePreview" style="background-image: url({{ $banner->fullImage }});">
+                                    <div id="imagePreview" style="background-image: url({{ route('banner.image.preview', $banner->id) }});">
                                     </div>
                                 </div>
                             </div>

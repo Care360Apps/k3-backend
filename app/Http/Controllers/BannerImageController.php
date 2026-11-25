@@ -14,6 +14,17 @@ class BannerImageController extends Controller
             ->where(fn ($q) => $q->whereNull('ends_at')->orWhereDate('ends_at', '>=', $now->toDateString()))
             ->findOrFail($id);
         abort_unless(SafePartnerLink::isValidHttps($banner->link), 404);
+        return $this->serve($banner);
+    }
+
+    public function preview(int $id)
+    {
+        abort_unless(\Illuminate\Support\Facades\Gate::allows('banner_access') || \Illuminate\Support\Facades\Gate::allows('banner_edit'), 403);
+        return $this->serve(Banner::findOrFail($id));
+    }
+
+    private function serve(Banner $banner)
+    {
         $name = $banner->image;
         abort_unless(is_string($name) && preg_match('/^[A-Za-z0-9_-][A-Za-z0-9_.-]{0,199}\.(jpe?g|png)$/iD', $name), 404);
         $root = realpath(public_path('images/upload'));

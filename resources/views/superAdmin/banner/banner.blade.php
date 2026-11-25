@@ -43,8 +43,8 @@
                                         <div class="small">{{ $banner->link }}</div>
                                     </td>
                                     <td>
-                                        <a href="{{ $banner->fullImage }}" data-fancybox="gallery2">
-                                            <img class="avatar-img rounded-circle" alt="User Image" src="{{ $banner->fullImage }}" height="50" width="50">
+                                        <a href="{{ route('banner.image.preview', $banner->id) }}" data-fancybox="gallery2">
+                                            <img class="avatar-img rounded-circle" alt="User Image" src="{{ route('banner.image.preview', $banner->id) }}" height="50" width="50">
                                         </a>
                                     </td>
                                     <td>{{ $banner->is_sponsored ? __('Sponsored') : __('Partner') }}</td>
