@@ -105,6 +105,30 @@ class TrainsCatalogueTest extends TestCase {
             $this->assertSame('image/png',$response->headers->get('Content-Type'));
         } finally { @unlink($path); }
     }
+    public function test_legacy_image_audit_and_copy_preserve_original_and_draft_privacy(): void {
+        $name='legacy-test-'.\Illuminate\Support\Str::uuid().'.png';
+        $source=public_path('images/upload/'.$name);
+        \Illuminate\Support\Facades\File::ensureDirectoryExists(dirname($source));
+        copy(UploadedFile::fake()->image('legacy.png',16,16)->getPathname(),$source);
+        $c=$this->course(['image'=>$name]);
+        $private=null;
+        try {
+            $this->artisan('trains:privatize-images')->assertExitCode(0);
+            $this->assertSame($name,$c->fresh()->image);
+            $this->artisan('trains:privatize-images',['--apply'=>true])->assertExitCode(0);
+            $c->refresh();
+            $this->assertStringStartsWith('trains-',$c->image);
+            $private=storage_path('app/course-images/'.$c->image);
+            $this->assertFileExists($private);
+            $this->assertFileExists($source);
+            $this->get('/api/course-images/'.$c->image)->assertNotFound();
+            $this->artisan('trains:privatize-images',['--apply'=>true])->assertExitCode(0);
+            $this->assertSame(basename($private),$c->fresh()->image);
+        } finally {
+            @unlink($source);
+            if ($private) { @unlink($private); }
+        }
+    }
     public function test_non_images_cannot_be_uploaded(): void {
         Gate::shouldReceive('denies')->with('course_add')->andReturn(false);
         $request=Request::create('/course','POST',$this->input());
