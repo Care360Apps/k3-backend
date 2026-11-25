@@ -41,8 +41,8 @@
                                 <tr>
                                     <td>{{ $loop->iteration }}</td>
                                     <td>
-                                        <a href="{{ $course->fullImage }}" data-fancybox="gallery2">
-                                            <img src="{{ $course->fullImage }}" width="50" height="50" class="rounded" alt="">
+                                        <a href="{{ ($course->image ? route('course.image.preview', ['id' => $course->id]) : $course->fullImage) }}" data-fancybox="gallery2">
+                                            <img src="{{ ($course->image ? route('course.image.preview', ['id' => $course->id]) : $course->fullImage) }}" width="50" height="50" class="rounded" alt="">
                                         </a>
                                     </td>
                                     <td>{{ $course->title }}</td>
