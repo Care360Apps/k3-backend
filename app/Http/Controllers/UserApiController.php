@@ -1548,7 +1548,10 @@ class UserApiController extends Controller
         if (! $user->hasAnyRole(Role::all())) {
             $history = VideoCallHistory::with(['doctor:id,name,image', 'user:id,name,image'])->where('user_id', auth()->user()->id)->get()->makeHidden(['created_at', 'updated_at']);
         } else {
-            $doctor = Doctor::where('user_id', $user->id)->first();
+            $doctor = Doctor::where('user_id', $user->id)->where('is_approved', 1)->where('status', 1)->first();
+            if (! $doctor) {
+                return response()->json(['success' => false, 'msg' => 'Consultation history not authorized'], 403);
+            }
             $history = VideoCallHistory::with(['doctor:id,name,image', 'user:id,name,image'])->where('doctor_id', $doctor->id)->get()->makeHidden(['created_at', 'updated_at']);
         }
 
@@ -1557,16 +1560,27 @@ class UserApiController extends Controller
 
     public function apiAddHistory(Request $request)
     {
-        $request->validate([
-            'doctor_id' => 'bail|required',
-            'date' => 'bail|required',
-            'start_time' => 'bail|required',
-            'duration' => 'bail|required',
+        $validated = $request->validate([
+            'user_id' => 'bail|required|integer|min:1',
+            'doctor_id' => 'bail|required|integer|min:1',
+            'date' => 'bail|required|string|max:64',
+            'start_time' => 'bail|required|string|max:64',
+            'duration' => 'bail|required|integer|min:0|max:86400',
         ]);
-        $data = $request->except(['doctor_id']);
-        $doctor = Doctor::where('user_id', auth()->user()->id)->firstOrFail();
-        $data['doctor_id'] = $doctor->id;
-        VideoCallHistory::create($data);
+        $doctor = Doctor::where('user_id', auth()->id())
+            ->where('is_approved', 1)->where('status', 1)->firstOrFail();
+        $patient = User::find($validated['user_id']);
+        if (! $patient || $patient->roles()->exists() || $patient->id == auth()->id()
+            || ! Appointment::hasOpenBooking($patient->id, $doctor->id, 'video_call')) {
+            return response()->json(['success' => false, 'msg' => 'Consultation history not authorized'], 403);
+        }
+        VideoCallHistory::create([
+            'user_id' => $patient->id,
+            'doctor_id' => $doctor->id,
+            'date' => $validated['date'],
+            'start_time' => $validated['start_time'],
+            'duration' => $validated['duration'],
+        ]);
 
         return response(['success' => true]);
     }
