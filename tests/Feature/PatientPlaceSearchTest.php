@@ -100,6 +100,7 @@ class PatientPlaceSearchTest extends TestCase
 
     public function test_geoapify_details_preserve_mobile_contract(): void
     {
+        config()->set('services.google_places.key', '');
         config()->set('services.care360_places.provider', 'geoapify');
         config()->set('services.care360_places.geoapify_key', 'synthetic-key');
         Http::preventStrayRequests();
@@ -111,5 +112,7 @@ class PatientPlaceSearchTest extends TestCase
         ]));
         $this->assertSame(200, $result->getStatusCode());
         $this->assertSame(8.846, json_decode($result->getContent(), true)['data']['latitude']);
+        Http::assertSent(fn ($request) => str_starts_with($request->url(), 'https://api.geoapify.com/v2/place-details'));
+        Http::assertSentCount(1);
     }
 }
