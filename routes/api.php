@@ -87,7 +87,8 @@ Route::middleware('throttle:auth')->group(function () {
 Route::post('/doctors', [UserApiController::class, 'apiDoctors']);
 Route::get('/treatments', [UserApiController::class, 'apiTreatments']);
 Route::get('/offers', [UserApiController::class, 'apiOffers']);
-Route::get('/courses', [UserApiController::class, 'apiCourses']);
+Route::get('/courses', [UserApiController::class, 'apiCourses'])->middleware(['auth:api','throttle:60,1']);
+Route::get('course-images/{filename}', [\App\Http\Controllers\CourseImageController::class,'show'])->middleware('throttle:120,1');
 Route::post('near_by_doctor', [UserApiController::class, 'apiNearByDoctor']);
 Route::post('doctor_details/{id}', [UserApiController::class, 'apiSingleDoctor']);
 Route::get('provider_types', [ProviderApiController::class, 'apiProviderTypes']);

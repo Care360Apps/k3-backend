@@ -283,9 +283,9 @@ class UserApiController extends Controller
 
     public function apiCourses()
     {
-        $courses = Course::orderBy('id', 'DESC')->get(['id', 'title', 'summary', 'details', 'image', 'duration', 'amount', 'link']);
+        $courses = Course::where('is_published', true)->orderBy('id', 'DESC')->get(['id', 'title', 'provider', 'summary', 'details', 'image', 'duration', 'amount', 'link']);
 
-        return response(['success' => true, 'data' => $courses, 'msg' => 'All Courses']);
+        return response(['success' => true, 'data' => $courses, 'msg' => 'Published courses'])->header('Cache-Control','no-store');
     }
 
     public function apiNearByDoctor(Request $request)
