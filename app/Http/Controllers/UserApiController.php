@@ -1488,7 +1488,7 @@ class UserApiController extends Controller
             User::whereIn('id', [auth()->id(), $doctor_user->id])->update(['channel_name' => $cn, 'agora_token' => $token]);
             $this->oneSignalNoti($doctor_user->device_token, auth()->user()->name, $token, $cn, $appID);
 
-            return response()->json(['msg' => null, 'data' => ['agora_token' => $token, 'cn' => $cn, 'appId' => $appID], 'success' => true], 200);
+            return response()->json(['msg' => null, 'data' => ['agora_token' => $token, 'cn' => $cn, 'appId' => $appID, 'expires_at' => $privilegeExpiredTs], 'success' => true], 200)->header('Cache-Control', 'no-store');
         }
 
         return response()->json(['success' => false, 'msg' => 'Token And ID Not Available'], 200);
