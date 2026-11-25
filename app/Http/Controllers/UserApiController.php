@@ -1464,15 +1464,19 @@ class UserApiController extends Controller
         $request->validate([
             'to_id' => 'bail|required|integer',
         ]);
-        $doctor = Doctor::findOrFail($request->to_id);
+        $doctor = Doctor::where('is_approved', 1)->where('status', 1)->findOrFail($request->to_id);
         if (! Appointment::hasOpenBooking(auth()->id(), $doctor->id, 'video_call')) {
             return response()->json(['success' => false, 'msg' => 'You can only start a virtual call for a booked video consultation.'], 403);
         }
+        $doctor_user = User::find($doctor->user_id);
+        if (! $doctor_user || $doctor_user->id == auth()->id()) {
+            return response()->json(['success' => false, 'msg' => 'Consultation recipient unavailable'], 403);
+        }
         $cn = 'c'.bin2hex(random_bytes(12));
         $settings = Setting::select('agora_app_id', 'agora_app_certificate')->first();
-        $appID = $settings->agora_app_id;
-        $appCertificate = $settings->agora_app_certificate;
-        if ($appID != null && $appCertificate != null) {
+        $appID = $settings ? $settings->agora_app_id : null;
+        $appCertificate = $settings ? $settings->agora_app_certificate : null;
+        if (is_string($appID) && trim($appID) !== '' && is_string($appCertificate) && trim($appCertificate) !== '') {
             $channelName = $cn;
             $uid = 0;
             $role = \RtcTokenBuilder::RolePublisher;
@@ -1480,7 +1484,6 @@ class UserApiController extends Controller
             $currentTimestamp = (new DateTime('now', new DateTimeZone(env('timezone'))))->getTimestamp();
             $privilegeExpiredTs = $currentTimestamp + $expireTimeInSeconds;
 
-            $doctor_user = User::find($doctor->user_id);
             $token = \RtcTokenBuilder::buildTokenWithUid($appID, $appCertificate, $channelName, $uid, $role, $privilegeExpiredTs);
             User::whereIn('id', [auth()->id(), $doctor_user->id])->update(['channel_name' => $cn, 'agora_token' => $token]);
             $this->oneSignalNoti($doctor_user->device_token, auth()->user()->name, $token, $cn, $appID);
