@@ -111,6 +111,7 @@ Route::get('/lab_pathology/{lab_id}', [UserApiController::class, 'apiLabPatholog
 Route::get('/lab_radiology/{lab_id}', [UserApiController::class, 'apiLabRadiology']);
 Route::post('treatment_wise_doctor/{treatment_id}', [UserApiController::class, 'apiTreatmentDoctor']);
 Route::get('/banner', [UserApiController::class, 'apiBanner']);
+Route::get('banner-images/{id}', [\App\Http\Controllers\BannerImageController::class, 'show'])->whereNumber('id')->middleware('throttle:120,1');
 
 Route::middleware('auth:api')->group(function () {
     Route::post('stripe/payment_intent', [PaymentApiController::class, 'stripePaymentIntent']);

@@ -23,6 +23,6 @@ class Banner extends Model
 
     protected function getFullImageAttribute()
     {
-        return url('images/upload').'/'.$this->image;
+        return url('api/banner-images/'.$this->id).'?v='.rawurlencode((string) $this->image);
     }
 }
