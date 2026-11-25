@@ -82,6 +82,7 @@ class InventoryMedicalFilesSafely extends Command
             ['Clinical reference', 'Referenced', 'Public present', 'Private present', 'Missing', 'Unsafe'],
             $summary
         );
+        $this->warn('Public and private counts may overlap when both copies exist.');
         $this->warn('These are local filesystem counts, NOT proof that old URLs are blocked over HTTP.');
         $this->warn('Do not run the legacy name-randomizer to solve public access: random names are not access control.');
 
@@ -110,19 +111,58 @@ class InventoryMedicalFilesSafely extends Command
             return;
         }
 
-        $public = public_path($folder.DIRECTORY_SEPARATOR.$value);
-        if (! is_link($public) && is_file($public)) {
-            $stats['public']++;
+        $public = $this->referenceStatus(public_path(), $folder, $value);
+        $private = $folder === 'prescription/upload'
+            ? $this->referenceStatus(storage_path('app'), 'private/medical/prescriptions', $value)
+            : 'missing';
+
+        if ($public === 'unsafe' || $private === 'unsafe') {
+            $stats['unsafe']++;
             return;
         }
+        if ($public === 'present') {
+            $stats['public']++;
+        }
+        if ($private === 'present') {
+            $stats['private']++;
+        }
+        if ($public === 'missing' && $private === 'missing') {
+            $stats['missing']++;
+        }
+    }
 
-        if ($folder === 'prescription/upload') {
-            $private = storage_path('app/private/medical/prescriptions/'.$value);
-            if (! is_link($private) && is_file($private)) {
-                $stats['private']++;
-                return;
+    private function referenceStatus(string $root, string $folder, string $filename): string
+    {
+        $resolvedRoot = realpath($root);
+        if ($resolvedRoot === false || ! is_dir($root)) {
+            return 'unsafe';
+        }
+        $path = $root;
+        foreach (explode('/', $folder) as $part) {
+            $path .= DIRECTORY_SEPARATOR.$part;
+            if (is_link($path)) {
+                return 'unsafe';
+            }
+            if (! file_exists($path)) {
+                return 'missing';
+            }
+            if (! is_dir($path)) {
+                return 'unsafe';
             }
         }
-        $stats['missing']++;
+        $file = $path.DIRECTORY_SEPARATOR.$filename;
+        if (is_link($file)) {
+            return 'unsafe';
+        }
+        if (! file_exists($file)) {
+            return 'missing';
+        }
+        $resolved = realpath($file);
+        if (! is_file($file) || $resolved === false
+            || ! str_starts_with($resolved, $resolvedRoot.DIRECTORY_SEPARATOR)) {
+            return 'unsafe';
+        }
+
+        return 'present';
     }
 }
