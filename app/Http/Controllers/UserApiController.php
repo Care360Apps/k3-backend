@@ -642,7 +642,16 @@ class UserApiController extends Controller
             }
             $data['report_image'] = json_encode($report);
         }
-        $data = $this->resolvePayment($data, Appointment::class);
+        // Zero-charge appointments must not contact a payment gateway.
+        // Preserve the existing COD storage representation; no receipt or
+        // paid flag is fabricated for a booking with no money collected.
+        if ((float) $data['amount'] === 0.0) {
+            $data['payment_type'] = 'COD';
+            $data['payment_status'] = 0;
+            $data['payment_token'] = null;
+        } else {
+            $data = $this->resolvePayment($data, Appointment::class);
+        }
         if ($doctor->based_on == 'commission') {
             $comm = $data['amount'] * $doctor->commission_amount;
             $data['admin_commission'] = intval($comm / 100);
