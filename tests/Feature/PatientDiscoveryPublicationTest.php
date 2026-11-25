@@ -86,6 +86,27 @@ class PatientDiscoveryPublicationTest extends TestCase
         $this->travelBack();
     }
 
+    public function test_banner_image_delivery_and_inactive_preview(): void
+    {
+        $name='banner-test-'.\Illuminate\Support\Str::uuid().'.png';
+        $path=public_path('images/upload/'.$name);
+        \Illuminate\Support\Facades\File::ensureDirectoryExists(dirname($path));
+        $fixture=\Illuminate\Http\UploadedFile::fake()->image('banner.png',16,16);
+        try {
+            $this->assertTrue(copy($fixture->getPathname(),$path));
+            $banner=\App\Models\Banner::create(['name'=>'Synthetic','image'=>$name,'link'=>'https://example.org','status'=>1]);
+            $url='/api/banner-images/'.$banner->id;
+            $this->getJson('/api/banner')->assertJsonPath('data.0.fullImage',$banner->fullImage);
+            $this->get($url)->assertOk()->assertHeader('Content-Type','image/png');
+            $banner->update(['status'=>0]);
+            $this->get($url)->assertNotFound();
+            \Illuminate\Support\Facades\Gate::shouldReceive('allows')->with('banner_access')->andReturn(true);
+            $this->assertSame(200,(new \App\Http\Controllers\BannerImageController)->preview($banner->id)->getStatusCode());
+            $banner->update(['status'=>1,'image'=>'../secret.png']);
+            $this->get($url)->assertNotFound();
+        } finally { @unlink($path); }
+    }
+
     public function test_only_published_articles_are_public_and_missing_ids_return_404(): void
     {
         foreach ([[1,1],[0,1],[1,0]] as [$status,$release]) {
