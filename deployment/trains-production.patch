@@ -1,0 +1,494 @@
+diff --git a/app/Console/Commands/PrivatizeCourseImages.php b/app/Console/Commands/PrivatizeCourseImages.php
+new file mode 100644
+index 00000000..8a6d3217
+--- /dev/null
++++ b/app/Console/Commands/PrivatizeCourseImages.php
+@@ -0,0 +1,63 @@
++<?php
++
++namespace App\Console\Commands;
++
++use App\Models\Course;
++use Illuminate\Console\Command;
++use Illuminate\Support\Facades\File;
++use Illuminate\Support\Str;
++
++class PrivatizeCourseImages extends Command
++{
++    protected $signature = 'trains:privatize-images {--apply : Copy legacy images and update course references}';
++    protected $description = 'Audit or copy legacy course images into private storage without deleting shared public files';
++
++    public function handle(): int
++    {
++        $failures = 0;
++        $root = realpath(public_path('images/upload'));
++        foreach (Course::withTrashed()->whereNotNull('image')->cursor() as $course) {
++            $name = $course->image;
++            if (!$name || str_starts_with($name, 'trains-')) {
++                continue;
++            }
++            if (!preg_match('/^[A-Za-z0-9_-][A-Za-z0-9_.-]{0,199}\.(png|jpe?g|gif|webp)$/iD', $name)) {
++                $this->warn("Invalid legacy image for course {$course->id}");
++                $failures++;
++                continue;
++            }
++            $source = public_path('images/upload/'.$name);
++            $resolved = realpath($source);
++            if (!$root || !$resolved || is_link($source) || !str_starts_with($resolved, $root.DIRECTORY_SEPARATOR) || !is_file($resolved)) {
++                $this->warn("Missing or unsafe legacy image for course {$course->id}");
++                $failures++;
++                continue;
++            }
++            $mime = (@getimagesize($resolved))['mime'] ?? '';
++            $extensions = ['image/jpeg'=>'jpg','image/png'=>'png','image/gif'=>'gif','image/webp'=>'webp'];
++            if (!isset($extensions[$mime])) {
++                $this->warn("Invalid image content for course {$course->id}");
++                $failures++;
++                continue;
++            }
++            $this->line("Legacy course {$course->id}: {$name}");
++            if (!$this->option('apply')) {
++                continue;
++            }
++            $directory = storage_path('app/course-images');
++            File::ensureDirectoryExists($directory);
++            $new = 'trains-'.Str::uuid().'.'.$extensions[$mime];
++            if (!File::copy($resolved, $directory.'/'.$new)) {
++                $failures++;
++                continue;
++            }
++            $changed = Course::withTrashed()->whereKey($course->id)->where('image',$name)->update(['image'=>$new]);
++            if (!$changed) {
++                File::delete($directory.'/'.$new);
++                $failures++;
++            }
++        }
++        $this->warn('Original public files are retained. Verify shared references and remove or deny direct access to legacy files before release.');
++        return $failures ? self::FAILURE : self::SUCCESS;
++    }
++}
+diff --git a/app/Http/Controllers/CourseImageController.php b/app/Http/Controllers/CourseImageController.php
+new file mode 100644
+index 00000000..b3343e44
+--- /dev/null
++++ b/app/Http/Controllers/CourseImageController.php
+@@ -0,0 +1,42 @@
++<?php
++namespace App\Http\Controllers;
++
++use App\Models\Course;
++
++final class CourseImageController extends Controller
++{
++    public function show(string $filename)
++    {
++        abort_unless(preg_match('/^[A-Za-z0-9_-][A-Za-z0-9_.-]{0,199}\.(png|jpe?g|gif|webp)$/iD',$filename),404);
++        $published=Course::where('image',$filename)->where('is_published',true)->exists();
++        abort_unless($published,404);
++        return $this->serve($filename);
++    }
++
++    public function preview(int $id)
++    {
++        abort_unless(\Illuminate\Support\Facades\Gate::allows('course_access') || \Illuminate\Support\Facades\Gate::allows('course_edit'),403);
++        $course = Course::withTrashed()->findOrFail($id);
++        return $this->serve((string) $course->image);
++    }
++
++    private function serve(string $filename)
++    {
++        abort_unless(preg_match('/^[A-Za-z0-9_-][A-Za-z0-9_.-]{0,199}\.(png|jpe?g|gif|webp)$/iD',$filename),404);
++        $directory = storage_path('app/course-images');
++        // Legacy files remain readable until administrators replace them.
++        if (!str_starts_with($filename, 'trains-') && !file_exists($directory.'/'.$filename)) {
++            $directory = public_path('images/upload');
++        }
++        $root=realpath($directory);
++        $path=$directory.'/'.$filename;$resolved=realpath($path);
++        abort_unless($root && $resolved && !is_link($path) && str_starts_with($resolved,$root.DIRECTORY_SEPARATOR)
++            && is_file($resolved) && is_readable($resolved),404);
++        $info=@getimagesize($resolved);$mime=$info['mime'] ?? '';
++        abort_unless(in_array($mime,['image/png','image/jpeg','image/gif','image/webp'],true),404);
++        return response()->file($resolved,[
++            'Content-Type'=>$mime,'X-Content-Type-Options'=>'nosniff',
++            'Cache-Control'=>'no-store',
++        ]);
++    }
++}
+diff --git a/app/Http/Controllers/SuperAdmin/CourseController.php b/app/Http/Controllers/SuperAdmin/CourseController.php
+index ccfcd8f0..86c3c6b3 100644
+--- a/app/Http/Controllers/SuperAdmin/CourseController.php
++++ b/app/Http/Controllers/SuperAdmin/CourseController.php
+@@ -33,26 +33,57 @@ public function create()
+         return view('superAdmin.course.create_course');
+     }
+ 
++    private function courseData(Request $request, bool $new): array
++    {
++        if (trim((string) $request->input('amount', '')) === '') {
++            $request->merge(['amount' => null]);
++        }
++        $data = $request->validate([
++            'title' => ['required','string','max:255'],
++            'provider' => ['required','in:cnu,speakout'],
++            'summary' => ['required','string','max:2000'],
++            'details' => ['required','string','max:30000'],
++            'duration' => ['required','string','max:120'],
++            'amount' => ['nullable','numeric','min:0','max:99999999.99','decimal:0,2'],
++            'image' => [$new ? 'required' : 'nullable','image','mimes:jpeg,png,jpg','max:2048'],
++            'is_published' => ['required','boolean'],
++            'link' => ['required','string','max:255', function($attribute,$value,$fail) use ($request) {
++                if (! \App\Services\SafePartnerLink::isValidHttps($value)) {
++                    $fail('Enter a public HTTPS application link.');
++                }
++                $host = strtolower((string) parse_url($value, PHP_URL_HOST));
++                if ($request->input('provider') === 'speakout'
++                    && $host !== 'speakoutmentalhealth.org' && ! str_ends_with($host,'.speakoutmentalhealth.org')) {
++                    $fail('SpeakOut registration must use the existing SpeakOut website.');
++                }
++            }],
++        ]);
++        if ($data['provider'] === 'speakout') {
++            $data['amount'] = 0;
++        } elseif ($data['amount'] !== null && (float) $data['amount'] <= 0) {
++            throw \Illuminate\Validation\ValidationException::withMessages(['amount'=>'CNU tuition must be greater than zero, or blank for Contact for tuition.']);
++        }
++        foreach (['title','summary','details','duration'] as $field) {
++            $data[$field] = trim(strip_tags($data[$field]));
++            if ($data[$field] === '') {
++                throw \Illuminate\Validation\ValidationException::withMessages([$field=>'Enter visible text.']);
++            }
++        }
++        return $data;
++    }
++
++    private function storeImage(\Illuminate\Http\UploadedFile $image): string
++    {
++        $filename = 'trains-'.\Illuminate\Support\Str::uuid().'.'.$image->extension();
++        $image->move(storage_path('app/course-images'), $filename);
++        return $filename;
++    }
++
+     public function store(Request $request)
+     {
+         abort_if(Gate::denies('course_add'), Response::HTTP_FORBIDDEN, '403 Forbidden');
+-        $request->validate([
+-            'title' => 'bail|required|string|max:255',
+-            'summary' => 'bail|required|string',
+-            'details' => 'bail|required|string',
+-            'image' => 'bail|required|mimes:jpeg,png,jpg|max:1000',
+-            'duration' => 'bail|required|string|max:120',
+-            'amount' => 'bail|required|numeric|min:0',
+-            'link' => 'bail|required|url|max:255',
+-        ],
+-            [
+-                'image.max' => 'The Image May Not Be Greater Than 1 MegaBytes.',
+-            ]);
+-
+-        $data = $request->all();
+-        if ($request->hasFile('image')) {
+-            $data['image'] = (new CustomController)->imageUpload($request->image);
+-        }
++        $data = $this->courseData($request, true);
++        $data['image'] = $this->storeImage($request->file('image'));
+ 
+         Course::create($data);
+ 
+@@ -70,27 +101,13 @@ public function edit($id)
+     public function update(Request $request, $id)
+     {
+         abort_if(Gate::denies('course_edit'), Response::HTTP_FORBIDDEN, '403 Forbidden');
+-        $request->validate([
+-            'title' => 'bail|required|string|max:255',
+-            'summary' => 'bail|required|string',
+-            'details' => 'bail|required|string',
+-            'image' => 'bail|mimes:jpeg,png,jpg|max:1000',
+-            'duration' => 'bail|required|string|max:120',
+-            'amount' => 'bail|required|numeric|min:0',
+-            'link' => 'bail|required|url|max:255',
+-        ],
+-            [
+-                'image.max' => 'The Image May Not Be Greater Than 1 MegaBytes.',
+-            ]);
+-
+         $course = Course::findOrFail($id);
+-        $data = $request->all();
+-
++        $data = $this->courseData($request, false);
+         if ($request->hasFile('image')) {
+-            if ($course->image) {
+-                (new CustomController)->deleteFile($course->image);
+-            }
+-            $data['image'] = (new CustomController)->imageUpload($request->image);
++            // Store first so a failed upload cannot destroy the existing image.
++            $data['image'] = $this->storeImage($request->file('image'));
++        } else {
++            unset($data['image']);
+         }
+ 
+         $course->update($data);
+@@ -120,7 +137,11 @@ public function forceDelete($id)
+         abort_if(Gate::denies('course_delete'), Response::HTTP_FORBIDDEN, '403 Forbidden');
+         $course = Course::onlyTrashed()->findOrFail($id);
+         if ($course->image) {
+-            (new CustomController)->deleteFile($course->image);
++            if (preg_match('/^trains-[a-f0-9-]+\.(jpg|jpeg|png)$/iD', $course->image)) {
++                \Illuminate\Support\Facades\File::delete(storage_path('app/course-images/'.$course->image));
++            } else {
++                (new CustomController)->deleteFile($course->image);
++            }
+         }
+         $course->forceDelete();
+ 
+diff --git a/app/Http/Controllers/UserApiController.php b/app/Http/Controllers/UserApiController.php
+index 0e7b19bf..8c1a0c9b 100644
+--- a/app/Http/Controllers/UserApiController.php
++++ b/app/Http/Controllers/UserApiController.php
+@@ -283,9 +283,9 @@ public function apiOffers()
+ 
+     public function apiCourses()
+     {
+-        $courses = Course::orderBy('id', 'DESC')->get(['id', 'title', 'summary', 'details', 'image', 'duration', 'amount', 'link']);
++        $courses = Course::where('is_published', true)->orderBy('id', 'DESC')->get(['id', 'title', 'provider', 'summary', 'details', 'image', 'duration', 'amount', 'link']);
+ 
+-        return response(['success' => true, 'data' => $courses, 'msg' => 'All Courses']);
++        return response(['success' => true, 'data' => $courses, 'msg' => 'Published courses'])->header('Cache-Control','no-store');
+     }
+ 
+     public function apiNearByDoctor(Request $request)
+diff --git a/app/Models/Course.php b/app/Models/Course.php
+index 2076a62a..21677129 100644
+--- a/app/Models/Course.php
++++ b/app/Models/Course.php
+@@ -20,14 +20,18 @@ class Course extends Model
+         'duration',
+         'amount',
+         'link',
++        'provider',
++        'is_published',
+     ];
+ 
++    protected $casts = ['is_published' => 'boolean', 'amount' => 'decimal:2'];
++
+     protected $appends = ['fullImage'];
+ 
+     protected function getFullImageAttribute()
+     {
+         if ($this->image) {
+-            return url('images/upload').'/'.$this->image;
++            return secure_url('api/course-images/'.rawurlencode(basename($this->image)));
+         }
+ 
+         return url('images/upload_empty/defaultUser.png');
+diff --git a/database/migrations/2026_11_24_150000_add_trains_catalogue_controls.php b/database/migrations/2026_11_24_150000_add_trains_catalogue_controls.php
+new file mode 100644
+index 00000000..3b85adf7
+--- /dev/null
++++ b/database/migrations/2026_11_24_150000_add_trains_catalogue_controls.php
+@@ -0,0 +1,17 @@
++<?php
++use Illuminate\Database\Migrations\Migration;
++use Illuminate\Database\Schema\Blueprint;
++use Illuminate\Support\Facades\Schema;
++return new class extends Migration {
++    public function up(): void {
++        Schema::table('course', function(Blueprint $t) {
++            $t->string('provider', 30)->default('cnu');
++            $t->boolean('is_published')->default(false)->index();
++            $t->decimal('amount',10,2)->nullable()->default(null)->change();
++        });
++    }
++    public function down(): void {
++        // Retain nullable tuition: rollback must never convert unknown tuition to free.
++        Schema::table('course', fn(Blueprint $t) => $t->dropColumn(['provider','is_published']));
++    }
++};
+diff --git a/resources/views/superAdmin/course/catalogue_controls.blade.php b/resources/views/superAdmin/course/catalogue_controls.blade.php
+new file mode 100644
+index 00000000..9738bbcd
+--- /dev/null
++++ b/resources/views/superAdmin/course/catalogue_controls.blade.php
+@@ -0,0 +1,17 @@
++<div class="form-group">
++    <label for="provider">Provider</label>
++    <select id="provider" name="provider" class="form-control" required>
++        <option value="cnu" @selected(old('provider', $course->provider ?? 'cnu') === 'cnu')>CNU</option>
++        <option value="speakout" @selected(old('provider', $course->provider ?? 'cnu') === 'speakout')>SpeakOut</option>
++    </select>
++    <small>CNU tuition is in NGN. Leave blank for Contact for tuition. SpeakOut is always 100% free; registration and approval happen on the SpeakOut website.</small>
++    @error('provider')<div class="text-danger">{{ $message }}</div>@enderror
++</div>
++<div class="form-group">
++    <label for="is_published">Publication</label>
++    <select id="is_published" name="is_published" class="form-control" required>
++        <option value="0" @selected(!old('is_published', $course->is_published ?? false))>Draft — hidden in both apps</option>
++        <option value="1" @selected(old('is_published', $course->is_published ?? false))>Published — visible in both apps</option>
++    </select>
++    @error('is_published')<div class="text-danger">{{ $message }}</div>@enderror
++</div>
+diff --git a/resources/views/superAdmin/course/course.blade.php b/resources/views/superAdmin/course/course.blade.php
+index 1029058c..205797c8 100644
+--- a/resources/views/superAdmin/course/course.blade.php
++++ b/resources/views/superAdmin/course/course.blade.php
+@@ -26,7 +26,7 @@
+                                 <th>#</th>
+                                 <th>{{__('Image')}}</th>
+                                 <th>{{__('Title')}}</th>
+-                                <th>{{__('Duration')}}</th>
++                                <th>Provider / publication</th><th>{{__('Duration')}}</th>
+                                 <th>{{__('Amount')}}</th>
+                                 <th>{{__('Link')}}</th>
+                                 <th>{{__('Summary')}}</th>
+@@ -40,15 +40,15 @@
+                                 <tr>
+                                     <td>{{ $loop->iteration }}</td>
+                                     <td>
+-                                        <a href="{{ $course->fullImage }}" data-fancybox="gallery2">
+-                                            <img src="{{ $course->fullImage }}" width="50" height="50" class="rounded" alt="">
++                                        <a href="{{ ($course->image ? route('course.image.preview', ['id' => $course->id]) : $course->fullImage) }}" data-fancybox="gallery2">
++                                            <img src="{{ ($course->image ? route('course.image.preview', ['id' => $course->id]) : $course->fullImage) }}" width="50" height="50" class="rounded" alt="">
+                                         </a>
+                                     </td>
+                                     <td>{{ $course->title }}</td>
+-                                    <td>{{ $course->duration }}</td>
+-                                    <td>{{ number_format($course->amount, 2) }}</td>
++                                    <td>{{ $course->provider === 'speakout' ? 'SpeakOut' : 'CNU' }} / {{ $course->is_published ? 'Published' : 'Draft' }}</td><td>{{ $course->duration }}</td>
++                                    <td>{{ $course->provider === 'speakout' ? '100% free' : ($course->amount > 0 ? 'NGN '.number_format($course->amount, 2) : 'Contact for tuition') }}</td>
+                                     <td>
+-                                        <a href="{{ $course->link }}" target="_blank">{{ __('Open') }}</a>
++                                        <a href="{{ $course->link }}" target="_blank" rel="noopener noreferrer">{{ __('Open') }}</a>
+                                     </td>
+                                     <td>{{ \Illuminate\Support\Str::limit(strip_tags($course->summary), 80) }}</td>
+                                     @if (Gate::check('course_edit') || Gate::check('course_delete'))
+diff --git a/resources/views/superAdmin/course/create_course.blade.php b/resources/views/superAdmin/course/create_course.blade.php
+index c82a52ca..2967f321 100644
+--- a/resources/views/superAdmin/course/create_course.blade.php
++++ b/resources/views/superAdmin/course/create_course.blade.php
+@@ -37,6 +37,7 @@
+                             @enderror
+                         </div>
+                         <div class="col-lg-10 col-md-8">
++                            @include('superAdmin.course.catalogue_controls')
+                             <div class="form-group">
+                                 <label class="col-form-label">{{__('Course Title')}}</label>
+                                 <input type="text" value="{{ old('title') }}" name="title" class="form-control @error('title') is-invalid @enderror">
+@@ -56,8 +57,8 @@
+                                 @enderror
+                             </div>
+                             <div class="form-group">
+-                                <label class="col-form-label">{{__('Amount')}}</label>
+-                                <input type="number" step="0.01" value="{{ old('amount') }}" name="amount" class="form-control @error('amount') is-invalid @enderror">
++                                <label class="col-form-label">{{__('Tuition (NGN)')}}</label>
++                                <input type="number" step="0.01" value="{{ old('amount') }}" name="amount" min="0" placeholder="Contact for tuition" class="form-control @error('amount') is-invalid @enderror">
+                                 @error('amount')
+                                     <div class="invalid-feedback">
+                                         {{ $message }}
+@@ -65,7 +66,7 @@
+                                 @enderror
+                             </div>
+                             <div class="form-group">
+-                                <label class="col-form-label">{{__('Link')}}</label>
++                                <label class="col-form-label">{{__('External application link (HTTPS)')}}</label>
+                                 <input type="text" value="{{ old('link') }}" name="link" class="form-control @error('link') is-invalid @enderror">
+                                 @error('link')
+                                     <div class="invalid-feedback">
+@@ -86,7 +87,7 @@
+                     </div>
+                     <div class="form-group">
+                         <label class="col-form-label">{{__('Course Details')}}</label>
+-                        <textarea name="details" class="summernote form-control @error('details') is-invalid @enderror">{{ old('details') }}</textarea>
++                        <textarea name="details" class="form-control @error('details') is-invalid @enderror">{{ old('details') }}</textarea>
+                         @error('details')
+                             <div class="invalid-feedback">
+                                 {{ $message }}
+diff --git a/resources/views/superAdmin/course/deleted_course.blade.php b/resources/views/superAdmin/course/deleted_course.blade.php
+index 5070c9b3..3a655e18 100644
+--- a/resources/views/superAdmin/course/deleted_course.blade.php
++++ b/resources/views/superAdmin/course/deleted_course.blade.php
+@@ -41,8 +41,8 @@
+                                 <tr>
+                                     <td>{{ $loop->iteration }}</td>
+                                     <td>
+-                                        <a href="{{ $course->fullImage }}" data-fancybox="gallery2">
+-                                            <img src="{{ $course->fullImage }}" width="50" height="50" class="rounded" alt="">
++                                        <a href="{{ ($course->image ? route('course.image.preview', ['id' => $course->id]) : $course->fullImage) }}" data-fancybox="gallery2">
++                                            <img src="{{ ($course->image ? route('course.image.preview', ['id' => $course->id]) : $course->fullImage) }}" width="50" height="50" class="rounded" alt="">
+                                         </a>
+                                     </td>
+                                     <td>{{ $course->title }}</td>
+diff --git a/resources/views/superAdmin/course/edit_course.blade.php b/resources/views/superAdmin/course/edit_course.blade.php
+index f1dba917..6712f8b2 100644
+--- a/resources/views/superAdmin/course/edit_course.blade.php
++++ b/resources/views/superAdmin/course/edit_course.blade.php
+@@ -27,7 +27,7 @@
+                                     <label for="image"></label>
+                                 </div>
+                                 <div class="avatar-preview">
+-                                    <div id="imagePreview" style="background-image: url({{ $course->fullImage }});">
++                                    <div id="imagePreview" style="background-image: url({{ ($course->image ? route('course.image.preview', ['id' => $course->id]) : $course->fullImage) }});">
+                                     </div>
+                                 </div>
+                             </div>
+@@ -38,6 +38,7 @@
+                             @enderror
+                         </div>
+                         <div class="col-lg-10 col-md-8">
++                            @include('superAdmin.course.catalogue_controls')
+                             <div class="form-group">
+                                 <label class="col-form-label">{{__('Course Title')}}</label>
+                                 <input type="text" value="{{ $course->title }}" name="title" class="form-control @error('title') is-invalid @enderror">
+@@ -57,8 +58,8 @@
+                                 @enderror
+                             </div>
+                             <div class="form-group">
+-                                <label class="col-form-label">{{__('Amount')}}</label>
+-                                <input type="number" step="0.01" value="{{ $course->amount }}" name="amount" class="form-control @error('amount') is-invalid @enderror">
++                                <label class="col-form-label">{{__('Tuition (NGN)')}}</label>
++                                <input type="number" step="0.01" value="{{ $course->amount }}" name="amount" min="0" placeholder="Contact for tuition" class="form-control @error('amount') is-invalid @enderror">
+                                 @error('amount')
+                                     <div class="invalid-feedback">
+                                         {{ $message }}
+@@ -66,7 +67,7 @@
+                                 @enderror
+                             </div>
+                             <div class="form-group">
+-                                <label class="col-form-label">{{__('Link')}}</label>
++                                <label class="col-form-label">{{__('External application link (HTTPS)')}}</label>
+                                 <input type="text" value="{{ $course->link }}" name="link" class="form-control @error('link') is-invalid @enderror">
+                                 @error('link')
+                                     <div class="invalid-feedback">
+@@ -87,7 +88,7 @@
+                     </div>
+                     <div class="form-group">
+                         <label class="col-form-label">{{__('Course Details')}}</label>
+-                        <textarea name="details" class="summernote form-control @error('details') is-invalid @enderror">{{ $course->details }}</textarea>
++                        <textarea name="details" class="form-control @error('details') is-invalid @enderror">{{ $course->details }}</textarea>
+                         @error('details')
+                             <div class="invalid-feedback">
+                                 {{ $message }}
+diff --git a/routes/api.php b/routes/api.php
+index 450389e3..64691c39 100644
+--- a/routes/api.php
++++ b/routes/api.php
+@@ -87,7 +87,8 @@
+ Route::post('/doctors', [UserApiController::class, 'apiDoctors']);
+ Route::get('/treatments', [UserApiController::class, 'apiTreatments']);
+ Route::get('/offers', [UserApiController::class, 'apiOffers']);
+-Route::get('/courses', [UserApiController::class, 'apiCourses']);
++Route::get('/courses', [UserApiController::class, 'apiCourses'])->middleware(['auth:api','throttle:60,1']);
++Route::get('course-images/{filename}', [\App\Http\Controllers\CourseImageController::class,'show'])->middleware('throttle:120,1');
+ Route::post('near_by_doctor', [UserApiController::class, 'apiNearByDoctor']);
+ Route::post('doctor_details/{id}', [UserApiController::class, 'apiSingleDoctor']);
+ Route::get('provider_types', [ProviderApiController::class, 'apiProviderTypes']);
+diff --git a/routes/web.php b/routes/web.php
+index f13b57eb..ca6e4502 100644
+--- a/routes/web.php
++++ b/routes/web.php
+@@ -210,6 +210,7 @@
+         // pending blog
+         Route::get('/blog/pending-blog', [BlogController::class, 'pending_blog']);
+ 
++        Route::get('course-image-preview/{id}', [\App\Http\Controllers\CourseImageController::class, 'preview'])->whereNumber('id')->name('course.image.preview');
+         Route::get('course/deleted', [CourseController::class, 'deleted']);
+         Route::get('course/restore/{id}', [CourseController::class, 'restore']);
+         Route::delete('course/force-delete/{id}', [CourseController::class, 'forceDelete']);
