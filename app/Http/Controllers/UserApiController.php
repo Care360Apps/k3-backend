@@ -642,7 +642,26 @@ class UserApiController extends Controller
             }
             $data['report_image'] = json_encode($report);
         }
-        $data = $this->resolvePayment($data, Appointment::class);
+        // Free consultations must never invoke a payment gateway. The price is
+        // calculated from the clinician's server-side rate and any valid offer.
+        if ((float) $data['amount'] <= 0) {
+            $data['amount'] = 0;
+            $data['payment_type'] = 'FREE';
+            $data['payment_status'] = 0; // No money was collected.
+            $data['payment_token'] = null;
+        } elseif (strtoupper((string) $data['payment_type']) === 'FREE') {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'payment_type' => 'Free booking is only available for zero-fee appointments.',
+            ]);
+        } elseif (strtoupper((string) $data['payment_type']) === 'BANK_TRANSFER') {
+            // Bank transfers are manual and must never be considered paid from
+            // a client-provided reference, screenshot or payment_status flag.
+            $data['payment_type'] = 'BANK_TRANSFER';
+            $data['payment_status'] = 0;
+            $data['payment_token'] = null;
+        } else {
+            $data = $this->resolvePayment($data, Appointment::class);
+        }
         if ($doctor->based_on == 'commission') {
             $comm = $data['amount'] * $doctor->commission_amount;
             $data['admin_commission'] = intval($comm / 100);
