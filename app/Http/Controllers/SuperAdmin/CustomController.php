@@ -461,7 +461,7 @@ class CustomController extends Controller
      */
     protected function getAppointmentRangesForDate($doctor_id, $date, $doctor)
     {
-        $appointments = Appointment::where('doctor_id', $doctor_id)->where('date', $date)->get(['time', 'end_time', 'duration_minutes']);
+        $appointments = Appointment::where('doctor_id', $doctor_id)->where('date', $date)->where('appointment_status', '!=', 'cancel')->get(['time', 'end_time', 'duration_minutes']);
         $timeslot = $doctor->timeslot == 'other' ? $doctor->custom_timeslot : $doctor->timeslot;
         $slotMins = max(15, intval($timeslot));
         $ranges = [];
@@ -474,7 +474,7 @@ class CustomController extends Controller
             } else {
                 $endCarbon = (clone $startCarbon)->addMinutes($slotMins);
             }
-            $ranges[] = [$startCarbon->diffInMinutes(Carbon::parse($date.' 00:00')), $endCarbon->diffInMinutes(Carbon::parse($date.' 00:00'))];
+            $ranges[] = [Carbon::parse($date.' 00:00')->diffInMinutes($startCarbon, false), Carbon::parse($date.' 00:00')->diffInMinutes($endCarbon, false)];
         }
 
         return $ranges;
