@@ -1464,6 +1464,9 @@ class UserApiController extends Controller
         $request->validate([
             'to_id' => 'bail|required|integer',
         ]);
+        if (auth()->user()->roles()->exists()) {
+            return response()->json(['success' => false, 'msg' => 'Patient access required'], 403);
+        }
         $doctor = Doctor::where('is_approved', 1)->where('status', 1)->findOrFail($request->to_id);
         if (! Appointment::hasOpenBooking(auth()->id(), $doctor->id, 'video_call')) {
             return response()->json(['success' => false, 'msg' => 'You can only start a virtual call for a booked video consultation.'], 403);
@@ -1519,7 +1522,7 @@ class UserApiController extends Controller
 
             );
         } catch (\Exception $e) {
-            info($e->getMessage());
+            report(new \RuntimeException('Consultation notification delivery failed'));
         }
     }
 
