@@ -109,7 +109,8 @@ class TrainsCatalogueTest extends TestCase {
         $name='legacy-test-'.\Illuminate\Support\Str::uuid().'.png';
         $source=public_path('images/upload/'.$name);
         \Illuminate\Support\Facades\File::ensureDirectoryExists(dirname($source));
-        copy(UploadedFile::fake()->image('legacy.png',16,16)->getPathname(),$source);
+        $fixture = UploadedFile::fake()->image('legacy.png',16,16);
+        $this->assertTrue(copy($fixture->getPathname(),$source));
         $c=$this->course(['image'=>$name]);
         $private=null;
         try {
