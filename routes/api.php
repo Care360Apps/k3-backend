@@ -153,7 +153,7 @@ Route::middleware('auth:api')->group(function () {
     Route::get('user_notification', [UserApiController::class, 'apiUserNotification']);
     Route::get('add_bookmark/{doctor_id}', [UserApiController::class, 'apiAddBookmark']);
     Route::get('faviroute_doctor', [UserApiController::class, 'apiFaviroute']);
-    Route::post('/generateAgoraToken', [UserApiController::class, 'apiGenerateToken']);
+    Route::post('/generateAgoraToken', [UserApiController::class, 'apiGenerateToken'])->middleware('throttle:6,1,agora-issuance');
     Route::get('/video_call_history', [UserApiController::class, 'apiVideoCallHistory']);
     Route::post('/add_call_history', [UserApiController::class, 'apiAddHistory']);
     Route::get('/send_notification', [UserApiController::class, 'apiSendNotification']);
@@ -212,7 +212,7 @@ Route::middleware('auth:api')->group(function () {
     Route::post('doctor_update_image', [DoctorApiController::class, 'apiUpdateImage']);
     Route::get('cancel_appointment', [DoctorApiController::class, 'apiCancelAppointment'])->middleware(EnsureApprovedProfessional::class);
     Route::post('doctor_change_password', [DoctorApiController::class, 'apiDoctorChangePassword']);
-    Route::post('/generateDoctorAgoraToken',[DoctorApiController::class, 'apiDoctorGenerateToken'])->middleware(EnsureApprovedProfessional::class);
+    Route::post('/generateDoctorAgoraToken',[DoctorApiController::class, 'apiDoctorGenerateToken'])->middleware([EnsureApprovedProfessional::class, 'throttle:6,1,agora-issuance']);
     Route::post('/send_message_to_patient_notification', [DoctorApiController::class, 'apiSendMessageToPatientNotificationTrigger'])->middleware('throttle:10,1')->middleware(EnsureApprovedProfessional::class);
 });
 
