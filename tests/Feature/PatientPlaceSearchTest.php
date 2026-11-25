@@ -80,4 +80,36 @@ class PatientPlaceSearchTest extends TestCase
         $this->assertSame(8.846, $json['data']['latitude']);
         $this->assertArrayNotHasKey('irrelevant', $json['data']);
     }
+
+    public function test_geoapify_search_returns_only_nigerian_suggestions(): void
+    {
+        config()->set('services.care360_places.provider', 'geoapify');
+        config()->set('services.care360_places.geoapify_key', 'synthetic-key');
+        Http::preventStrayRequests();
+        Http::fake(['https://api.geoapify.com/v1/geocode/autocomplete*' => Http::response(['results' => [
+            ['place_id' => 'abcdef123456', 'formatted' => 'Keffi, Nigeria', 'country_code' => 'ng'],
+            ['place_id' => 'abcdef123457', 'formatted' => 'Other', 'country_code' => 'us'],
+        ]])]);
+        $result = (new PatientPlaceSearchController)->autocomplete(Request::create('/api/places/autocomplete', 'POST', [
+            'query' => 'Keffi', 'session_token' => self::TOKEN,
+        ]));
+        $this->assertSame(200, $result->getStatusCode());
+        $this->assertCount(1, json_decode($result->getContent(), true)['data']);
+        $this->assertStringNotContainsString('synthetic-key', $result->getContent());
+    }
+
+    public function test_geoapify_details_preserve_mobile_contract(): void
+    {
+        config()->set('services.care360_places.provider', 'geoapify');
+        config()->set('services.care360_places.geoapify_key', 'synthetic-key');
+        Http::preventStrayRequests();
+        Http::fake(['https://api.geoapify.com/v2/place-details*' => Http::response(['features' => [
+            ['properties' => ['lat' => 8.846, 'lon' => 7.873, 'formatted' => 'Keffi, Nigeria', 'country_code' => 'ng']],
+        ]])]);
+        $result = (new PatientPlaceSearchController)->details(Request::create('/api/places/details', 'POST', [
+            'place_id' => 'abcdef123456', 'session_token' => self::TOKEN,
+        ]));
+        $this->assertSame(200, $result->getStatusCode());
+        $this->assertSame(8.846, json_decode($result->getContent(), true)['data']['latitude']);
+    }
 }
