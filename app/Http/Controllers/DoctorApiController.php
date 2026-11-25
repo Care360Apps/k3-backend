@@ -1085,7 +1085,7 @@ class DoctorApiController extends Controller
             return response()->json(['success' => false, 'msg' => 'You can only call a patient with a booked virtual consultation.'], 403);
         }
         $patient_user = User::find($request->to_id);
-        if (! $patient_user || $patient_user->id == auth()->id()) {
+        if (! $patient_user || $patient_user->id == auth()->id() || $patient_user->roles()->exists()) {
             return response()->json(['success' => false, 'msg' => 'Consultation recipient unavailable'], 403);
         }
         $cn = 'c'.bin2hex(random_bytes(12));
@@ -1137,7 +1137,7 @@ class DoctorApiController extends Controller
                 $headings = null,
             );
         } catch (\Exception $e) {
-            info($e->getMessage());
+            report(new \RuntimeException('Consultation notification delivery failed'));
         }
     }
 
