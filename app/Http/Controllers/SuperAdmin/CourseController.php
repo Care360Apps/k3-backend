@@ -72,11 +72,18 @@ class CourseController extends Controller
         return $data;
     }
 
+    private function storeImage(\Illuminate\Http\UploadedFile $image): string
+    {
+        $filename = 'trains-'.\Illuminate\Support\Str::uuid().'.'.$image->extension();
+        $image->move(storage_path('app/course-images'), $filename);
+        return $filename;
+    }
+
     public function store(Request $request)
     {
         abort_if(Gate::denies('course_add'), Response::HTTP_FORBIDDEN, '403 Forbidden');
         $data = $this->courseData($request, true);
-        $data['image'] = (new CustomController)->imageUpload($request->file('image'));
+        $data['image'] = $this->storeImage($request->file('image'));
 
         Course::create($data);
 
@@ -98,7 +105,7 @@ class CourseController extends Controller
         $data = $this->courseData($request, false);
         if ($request->hasFile('image')) {
             // Store first so a failed upload cannot destroy the existing image.
-            $data['image'] = (new CustomController)->imageUpload($request->file('image'));
+            $data['image'] = $this->storeImage($request->file('image'));
         } else {
             unset($data['image']);
         }
@@ -130,7 +137,11 @@ class CourseController extends Controller
         abort_if(Gate::denies('course_delete'), Response::HTTP_FORBIDDEN, '403 Forbidden');
         $course = Course::onlyTrashed()->findOrFail($id);
         if ($course->image) {
-            (new CustomController)->deleteFile($course->image);
+            if (preg_match('/^trains-[a-f0-9-]+\.(jpg|jpeg|png)$/iD', $course->image)) {
+                \Illuminate\Support\Facades\File::delete(storage_path('app/course-images/'.$course->image));
+            } else {
+                (new CustomController)->deleteFile($course->image);
+            }
         }
         $course->forceDelete();
 
