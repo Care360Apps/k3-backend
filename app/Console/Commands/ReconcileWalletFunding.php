@@ -19,7 +19,7 @@ final class ReconcileWalletFunding extends Command
             return self::FAILURE;
         }
         $apply = (bool) $this->option('apply');
-        if ($apply && (! config('care360_wallet.enabled', false) || ! PaymentReceiptClaimService::enabled())) {
+        if ($apply && (! config('care360_wallet.enabled', false) || ! config('care360_wallet.funding_enabled', false) || ! PaymentReceiptClaimService::enabled())) {
             $this->error('Wallet funding is disabled.');
             return self::FAILURE;
         }
