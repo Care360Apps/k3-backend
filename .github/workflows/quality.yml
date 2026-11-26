@@ -1,8 +1,7 @@
 name: K3 Laravel source checks (offline)
+# Windows-first: run routine checks locally. Hosted CI is a manual release gate.
+# Before production merges, run this workflow on the reviewed commit.
 on:
-  pull_request:
-  push:
-    branches: [main, develop]
   workflow_dispatch:
 permissions:
   contents: read
