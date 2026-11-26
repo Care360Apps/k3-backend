@@ -267,7 +267,9 @@ class PaymentGatewayService
             ->get('https://api.paystack.co/transaction/verify/'.rawurlencode($reference))
             ->throw()
             ->json('data');
-        if (($data['status'] ?? null) !== 'success'
+        if (str_starts_with($reference, 'c360-wallet-')
+            || data_get($data, 'metadata.purpose') === 'wallet_funding'
+            || ($data['status'] ?? null) !== 'success'
             || ! $this->sameCurrency($data['currency'] ?? null)
             || (int) ($data['amount'] ?? 0) !== $this->toMinorUnits($amount)
             || (string) data_get($data, 'metadata.user_id', '') !== (string) $userId) {
