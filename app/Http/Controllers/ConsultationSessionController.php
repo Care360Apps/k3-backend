@@ -67,6 +67,28 @@ final class ConsultationSessionController extends Controller
         });
     }
 
+    public function status(Request $request, int $appointmentId)
+    {
+        abort_unless(config('consultations.session_api_enabled') === true, 404);
+
+        return DB::transaction(function () use ($request, $appointmentId) {
+            [$appointment, $patient, $doctor] = $this->participants($request, $appointmentId);
+            $session = ConsultationSession::where('appointment_id', $appointment->id)->lockForUpdate()->first();
+            if (! $session) {
+                return response()->json(['success' => true, 'data' => [
+                    'state' => 'not_started',
+                ]])->header('Cache-Control', 'no-store');
+            }
+            abort_unless((int) $session->patient_user_id === (int) $patient->id
+                && (int) $session->doctor_user_id === (int) $doctor->id, 404);
+            return response()->json(['success' => true, 'data' => [
+                'session_id' => $session->id,
+                'state' => $session->ended_at ? 'ended' : ($session->expires_at->isPast() ? 'expired' : 'active'),
+                'expires_at' => $session->expires_at->timestamp,
+            ]])->header('Cache-Control', 'no-store');
+        });
+    }
+
     private function participants(Request $request, int $appointmentId): array
     {
         $appointment = Appointment::query()->whereKey($appointmentId)
