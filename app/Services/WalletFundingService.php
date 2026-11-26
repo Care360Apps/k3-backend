@@ -74,6 +74,9 @@ final class WalletFundingService
         return DB::transaction(function () use ($userId, $reference, $intent) {
             $locked = DB::table('care360_wallet_funding')->where('id', $intent->id)
                 ->where('user_id', $userId)->lockForUpdate()->first();
+            if (! $locked) {
+                $this->reject();
+            }
             if ($locked->status === 'credited' && $locked->journal_id) {
                 return (int) $locked->journal_id;
             }
