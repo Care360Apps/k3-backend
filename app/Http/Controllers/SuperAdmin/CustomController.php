@@ -342,6 +342,13 @@ class CustomController extends Controller
             $isMailNotificationON = $setting->using_mail;
             $isMsgNotificationON = $setting->using_msg;
             $template = NotificationTemplate::where('title', 'verification')->first();
+            if (! $template) {
+                logger()->warning('OTP verification template is missing.');
+                return $user;
+            }
+            if ($isMailNotificationON != 1 && $isMsgNotificationON != 1) {
+                logger()->warning('OTP delivery channels are disabled.');
+            }
             $mail1 = $template->mail_content;
             $msg1 = $template->msg_content;
             $subject = $template->subject;
@@ -371,7 +378,7 @@ class CustomController extends Controller
                     Config::set('mail', $config);
                     Mail::to($user->email)->send(new SendMail($mail1, $subject));
                 } catch (\Exception $e) {
-                    info($e);
+                    logger()->warning('OTP email transport failed.');
                 }
             }
             if ($isMsgNotificationON == 1) {
@@ -388,6 +395,7 @@ class CustomController extends Controller
                         ]
                     );
                 } catch (\Throwable $th) {
+                    logger()->warning('OTP SMS transport failed.');
                 }
             }
 
