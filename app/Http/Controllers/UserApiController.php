@@ -597,6 +597,13 @@ class UserApiController extends Controller
         }
         unset($data['offer_code']);
 
+        // Reject invalid server-side pricing before uploads or gateway calls.
+        if (! is_finite((float) $data['amount']) || (float) $data['amount'] < 0) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'amount' => 'The appointment price is invalid. Please contact support.',
+            ]);
+        }
+
         $data['appointment_id'] = '#'.rand(100000, 999999);
         $data['user_id'] = auth()->user()->id;
         $data['appointment_status'] = 'pending';
