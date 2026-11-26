@@ -33,7 +33,7 @@ final class ConsultationSessionController extends Controller
             }
             abort_unless((int) $session->patient_user_id === (int) $patient->id
                 && (int) $session->doctor_user_id === (int) $doctor->id, 404);
-            abort_if($session->ended_at || $session->expires_at->isPast(), 409, 'Consultation session closed');
+            abort_if($session->lifecycleState() !== 'active', 409, 'Consultation session closed');
             $uid = $session->participantUid((int) $request->user()->id);
             abort_if($uid === null, 404);
             $expires = min(now()->addMinutes(5)->timestamp, $session->expires_at->timestamp);
@@ -84,7 +84,7 @@ final class ConsultationSessionController extends Controller
                 && (int) $session->doctor_user_id === (int) $doctor->id, 404);
             return response()->json(['success' => true, 'data' => [
                 'session_id' => $session->id,
-                'state' => $session->ended_at ? 'ended' : ($session->expires_at->isPast() ? 'expired' : 'active'),
+                'state' => $session->lifecycleState(),
                 'expires_at' => $session->expires_at->timestamp,
             ]])->header('Cache-Control', 'no-store');
         });
