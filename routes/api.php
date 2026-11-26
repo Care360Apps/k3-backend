@@ -242,3 +242,10 @@ Route::prefix('clinical')->middleware(['auth:api', EnsureApprovedProfessional::c
 
 // Career and CNU training workflows have independent rollout and account guards.
 require __DIR__.'/career.php';
+
+Route::prefix('wallet/v1')->middleware(['auth:api', 'throttle:30,1'])->group(function () {
+    Route::post('funding/initialize', [\App\Http\Controllers\WalletController::class, 'initialize'])->middleware('throttle:5,1');
+    Route::post('funding/confirm', [\App\Http\Controllers\WalletController::class, 'confirm'])->middleware('throttle:10,1');
+    Route::get('balance', [\App\Http\Controllers\WalletController::class, 'balance']);
+    Route::get('history', [\App\Http\Controllers\WalletController::class, 'history']);
+});
