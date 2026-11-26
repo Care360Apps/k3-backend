@@ -18,6 +18,14 @@ final class ConsultationSession extends Model
         'ended_at' => 'immutable_datetime',
     ];
 
+    public function lifecycleState(): string
+    {
+        if ($this->ended_at !== null) {
+            return 'ended';
+        }
+        return $this->expires_at->timestamp <= now()->timestamp ? 'expired' : 'active';
+    }
+
     public function participantUid(int $userId): ?int
     {
         if ($userId <= 0 || (int) $this->patient_user_id === (int) $this->doctor_user_id) {

@@ -32,11 +32,12 @@ final class ConsultationSessionController extends Controller
                 ]);
             }
             abort_unless((int) $session->patient_user_id === (int) $patient->id
-                && (int) $session->doctor_user_id === (int) $doctor->id, 403);
-            abort_if($session->ended_at || $session->expires_at->isPast(), 409, 'Consultation session closed');
+                && (int) $session->doctor_user_id === (int) $doctor->id, 404);
+            abort_if($session->lifecycleState() !== 'active', 409, 'Consultation session closed');
             $uid = $session->participantUid((int) $request->user()->id);
-            abort_if($uid === null, 403);
+            abort_if($uid === null, 404);
             $expires = min(now()->addMinutes(5)->timestamp, $session->expires_at->timestamp);
+            abort_if($expires <= now()->timestamp, 409, 'Consultation session closed');
             require_once __DIR__.'/RtcTokenBuilder.php';
             $token = \RtcTokenBuilder::buildTokenWithUid(
                 $settings->agora_app_id, $settings->agora_app_certificate,
@@ -58,7 +59,7 @@ final class ConsultationSessionController extends Controller
             [$appointment, $patient, $doctor] = $this->participants($request, $appointmentId);
             $session = ConsultationSession::where('appointment_id', $appointment->id)->lockForUpdate()->firstOrFail();
             abort_unless((int) $session->patient_user_id === (int) $patient->id
-                && (int) $session->doctor_user_id === (int) $doctor->id, 403);
+                && (int) $session->doctor_user_id === (int) $doctor->id, 404);
             if (! $session->ended_at) {
                 $session->ended_at = now();
                 $session->save();
@@ -83,7 +84,7 @@ final class ConsultationSessionController extends Controller
                 && (int) $session->doctor_user_id === (int) $doctor->id, 404);
             return response()->json(['success' => true, 'data' => [
                 'session_id' => $session->id,
-                'state' => $session->ended_at ? 'ended' : ($session->expires_at->isPast() ? 'expired' : 'active'),
+                'state' => $session->lifecycleState(),
                 'expires_at' => $session->expires_at->timestamp,
             ]])->header('Cache-Control', 'no-store');
         });
