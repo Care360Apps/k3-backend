@@ -52,6 +52,43 @@ final class ConsultationSessionController extends Controller
         });
     }
 
+    // Invitations contain only a routing reference, never RTC credentials.
+    public function invite(Request $request, int $appointmentId)
+    {
+        abort_unless(config('consultations.session_api_enabled') === true, 404);
+        $recipient = DB::transaction(function () use ($request, $appointmentId) {
+            [$appointment, $patient, $doctor] = $this->participants($request, $appointmentId);
+            $session = ConsultationSession::where('appointment_id', $appointment->id)->lockForUpdate()->firstOrFail();
+            abort_unless((int) $session->patient_user_id === (int) $patient->id
+                && (int) $session->doctor_user_id === (int) $doctor->id, 404);
+            abort_if($session->lifecycleState() !== 'active', 409);
+            return (int) $request->user()->id === (int) $doctor->id ? $patient : $doctor;
+        });
+        $patientApp = ! $recipient->roles()->exists();
+        $prefix = $patientApp ? 'patient' : 'doctor';
+        $settings = Setting::first();
+        $device = trim((string) $recipient->device_token);
+        abort_unless($settings && (int) $settings->{$prefix.'_notification'} === 1
+            && $device !== '' && strlen($device) <= 512, 503);
+        try {
+            $client = new \Berkayk\OneSignal\OneSignalClient(
+                $settings->{$prefix.'_app_id'},
+                $settings->{$prefix.'_api_key'},
+                $settings->{$prefix.'_auth_key'}
+            );
+            $client->sendNotificationCustom([
+                'headings' => ['en' => 'Care360 consultation'],
+                'contents' => ['en' => 'Open Care360 to review your appointment.'],
+                'include_player_ids' => [$device],
+                'data' => ['type' => 'consultation_invite', 'appointment_id' => $appointmentId],
+            ]);
+        } catch (\Throwable $e) {
+            report(new \RuntimeException('Consultation invitation delivery failed'));
+            abort(503, 'Invitation unavailable');
+        }
+        return response()->json(['success' => true])->header('Cache-Control', 'no-store');
+    }
+
     public function end(Request $request, int $appointmentId)
     {
         abort_unless(config('consultations.session_api_enabled') === true, 404);
