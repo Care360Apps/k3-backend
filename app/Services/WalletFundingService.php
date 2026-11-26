@@ -10,7 +10,7 @@ final class WalletFundingService
 {
     private function guard(): void
     {
-        if (! config('care360_wallet.enabled', false)
+        if (! config('care360_wallet.enabled', false) || ! config('care360_wallet.funding_enabled', false)
             || ! PaymentReceiptClaimService::enabled()
             || ! config('services.paystack.secret')) {
             $this->reject();
