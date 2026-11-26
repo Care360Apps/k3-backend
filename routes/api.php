@@ -39,6 +39,7 @@ Route::get('paystack/return', fn () => response()->json(['message' => 'Return to
 Route::prefix('consultations/v1')->middleware(['auth:api', 'throttle:12,1'])->group(function () {
     Route::post('{appointmentId}/credentials', [\App\Http\Controllers\ConsultationSessionController::class, 'credentials'])->whereNumber('appointmentId');
     Route::get('{appointmentId}/status', [\App\Http\Controllers\ConsultationSessionController::class, 'status'])->whereNumber('appointmentId');
+    Route::post('{appointmentId}/invite', [\App\Http\Controllers\ConsultationSessionController::class, 'invite'])->whereNumber('appointmentId')->middleware('throttle:2,1,consultation-invite');
     Route::post('{appointmentId}/end', [\App\Http\Controllers\ConsultationSessionController::class, 'end'])->whereNumber('appointmentId');
 });
 
