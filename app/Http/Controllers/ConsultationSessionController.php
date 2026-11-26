@@ -71,17 +71,24 @@ final class ConsultationSessionController extends Controller
         abort_unless($settings && (int) $settings->{$prefix.'_notification'} === 1
             && $device !== '' && strlen($device) <= 512, 503);
         try {
-            $client = new \Berkayk\OneSignal\OneSignalClient(
-                $settings->{$prefix.'_app_id'},
-                $settings->{$prefix.'_api_key'},
-                $settings->{$prefix.'_auth_key'}
-            );
-            $client->sendNotificationCustom([
-                'headings' => ['en' => 'Care360 consultation'],
-                'contents' => ['en' => 'Open Care360 to review your appointment.'],
-                'include_player_ids' => [$device],
-                'data' => ['type' => 'consultation_invite', 'appointment_id' => $appointmentId],
-            ]);
+            $response = \Illuminate\Support\Facades\Http::withHeaders([
+                'Authorization' => 'Basic '.$settings->{$prefix.'_api_key'},
+            ])->acceptJson()->connectTimeout(5)->timeout(10)
+                ->withOptions(['verify' => true, 'allow_redirects' => false])
+                ->post('https://onesignal.com/api/v1/notifications', [
+                    'app_id' => $settings->{$prefix.'_app_id'},
+                    'headings' => ['en' => 'Care360 consultation'],
+                    'contents' => ['en' => 'Open Care360 to review your appointment.'],
+                    'include_player_ids' => [$device],
+                    'data' => ['type' => 'consultation_invite', 'appointment_id' => $appointmentId],
+                ]);
+            $result = $response->json();
+            if (! $response->successful() || ! is_array($result)
+                || ! is_string($result['id'] ?? null) || trim($result['id']) === ''
+                || ! empty($result['errors'])
+                || (isset($result['recipients']) && (int) $result['recipients'] < 1)) {
+                throw new \RuntimeException('Notification request not accepted');
+            }
         } catch (\Throwable $e) {
             report(new \RuntimeException('Consultation invitation delivery failed'));
             abort(503, 'Invitation unavailable');
