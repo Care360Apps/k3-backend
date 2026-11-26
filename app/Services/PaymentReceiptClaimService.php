@@ -30,7 +30,7 @@ final class PaymentReceiptClaimService
         $gateway = strtoupper(trim((string) ($verified['payment_type'] ?? '')));
         if (! is_string($reference) || $reference === '' || strlen($reference) > 512
             || ! in_array($gateway, ['STRIPE', 'PAYPAL', 'PAYSTACK', 'FLUTTERWAVE', 'RAZORPAY'], true)
-            || ! in_array($productType, ['appointment', 'lab', 'medicine', 'subscription'], true)
+            || ! in_array($productType, ['appointment', 'lab', 'medicine', 'subscription', 'wallet_funding'], true)
             || $productId <= 0 || $userId <= 0) {
             throw ValidationException::withMessages([
                 'payment_token' => 'Payment receipt could not be verified.',
