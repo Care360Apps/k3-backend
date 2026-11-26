@@ -38,6 +38,7 @@ Route::get('paystack/return', fn () => response()->json(['message' => 'Return to
 // Opt-in consultation session API; legacy clients remain unchanged.
 Route::prefix('consultations/v1')->middleware(['auth:api', 'throttle:12,1'])->group(function () {
     Route::post('{appointmentId}/credentials', [\App\Http\Controllers\ConsultationSessionController::class, 'credentials'])->whereNumber('appointmentId');
+    Route::get('{appointmentId}/status', [\App\Http\Controllers\ConsultationSessionController::class, 'status'])->whereNumber('appointmentId');
     Route::post('{appointmentId}/end', [\App\Http\Controllers\ConsultationSessionController::class, 'end'])->whereNumber('appointmentId');
 });
 
