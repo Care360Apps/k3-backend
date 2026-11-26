@@ -71,7 +71,7 @@ final class ConsultationSessionController extends Controller
         abort_unless($settings && (int) $settings->{$prefix.'_notification'} === 1
             && $device !== '' && strlen($device) <= 512, 503);
         try {
-            $client = new \\Berkayk\\OneSignal\\OneSignalClient(
+            $client = new \Berkayk\OneSignal\OneSignalClient(
                 $settings->{$prefix.'_app_id'},
                 $settings->{$prefix.'_api_key'},
                 $settings->{$prefix.'_auth_key'}
@@ -82,8 +82,8 @@ final class ConsultationSessionController extends Controller
                 'include_player_ids' => [$device],
                 'data' => ['type' => 'consultation_invite', 'appointment_id' => $appointmentId],
             ]);
-        } catch (\\Throwable $e) {
-            report(new \\RuntimeException('Consultation invitation delivery failed'));
+        } catch (\Throwable $e) {
+            report(new \RuntimeException('Consultation invitation delivery failed'));
             abort(503, 'Invitation unavailable');
         }
         return response()->json(['success' => true])->header('Cache-Control', 'no-store');
