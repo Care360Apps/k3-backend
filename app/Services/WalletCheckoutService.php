@@ -10,7 +10,7 @@ final class WalletCheckoutService
     // Internal only: call within the authorized appointment creation transaction.
     public function debitAppointment(int $userId, int $appointmentId, int $amountMinor): int
     {
-        if (! config('care360_wallet.enabled', false)
+        if (! config('care360_wallet.enabled', false) || ! config('care360_wallet.checkout_enabled', false)
             || DB::transactionLevel() < 1 || $userId <= 0 || $appointmentId <= 0
             || $amountMinor <= 0 || $amountMinor > 100000000000) {
             $this->reject();
