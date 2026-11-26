@@ -94,8 +94,8 @@ final class ConsultationSessionController extends Controller
     {
         $appointment = Appointment::query()->whereKey($appointmentId)
             ->where('visit_type', 'video_call')
-            ->whereIn('appointment_status', ['pending', 'approve'])
-            ->where('date', '>=', now(env('timezone'))->subDay()->toDateString())
+            ->where('appointment_status', 'approve')
+            ->whereBetween('date', [now(env('timezone'))->subDay()->toDateString(), now(env('timezone'))->toDateString()])
             ->lockForUpdate()->firstOrFail();
         $profile = Doctor::whereKey($appointment->doctor_id)
             ->where('is_approved', 1)->where('status', 1)->first();
