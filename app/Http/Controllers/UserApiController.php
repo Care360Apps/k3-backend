@@ -517,6 +517,8 @@ class UserApiController extends Controller
             'payment_type' => 'bail|required',
             'payment_status' => 'bail|nullable',
             'hospital_id' => 'bail|nullable',
+            'report_image' => 'bail|nullable|array|max:8',
+            'report_image.*' => 'bail|required|string|max:8400000',
             'policy_insurer_name' => 'bail|required_if:is_insured,1',
             'policy_number' => 'bail|required_if:is_insured,1',
         ]);
@@ -583,11 +585,40 @@ class UserApiController extends Controller
         if (isset($data['report_image'])) {
             $report = [];
             for ($i = 0; $i < count($data['report_image']); $i++) {
-                $img = $request->report_image[$i];
-                $img = str_replace('data:image/png;base64,', '', $img);
-                $img = str_replace(' ', '+', $img);
+                // Reject malformed, oversized or non-PNG clinical uploads.
+                // A public-file exposure migration is tracked separately and
+                // must be completed before the final security sign-off.
+                $image = $request->report_image[$i];
+                // Preserve old form-encoded uploads where a '+' became a
+                // space, while still rejecting non-base64 content below.
+                if (is_string($image)) {
+                    $image = str_replace(' ', '+', $image);
+                }
+                if (! is_string($image)) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'report_image' => 'A valid PNG report image is required.',
+                    ]);
+                }
+                // Older clients may send either raw base64 or a PNG data URI.
+                // Preserve both forms while rejecting unrelated MIME types.
+                $prefix = 'data:image/png;base64,';
+                if (str_starts_with($image, $prefix)) {
+                    $image = substr($image, strlen($prefix));
+                }
+                if (preg_match('#\A[A-Za-z0-9+/]+={0,2}\z#D', $image) !== 1) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'report_image' => 'A valid PNG report image is required.',
+                    ]);
+                }
+                $bytes = base64_decode($image, true);
+                if ($bytes === false || strlen($bytes) > 6 * 1024 * 1024 ||
+                    ! str_starts_with($bytes, "\x89PNG\r\n\x1a\n")) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'report_image' => 'A PNG report image must be no larger than 6 MB.',
+                    ]);
+                }
                 $Iname = CustomController::randomFileName('png');
-                file_put_contents(public_path('/images/upload/').$Iname, base64_decode($img));
+                file_put_contents(public_path('/images/upload/').$Iname, $bytes, LOCK_EX);
                 array_push($report, $Iname);
             }
             $data['report_image'] = json_encode($report);
@@ -782,7 +813,7 @@ class UserApiController extends Controller
 
     public function apiSetting()
     {
-        $setting = Setting::first(['cod', 'doctor_app_id', 'paypal', 'stripe', 'razor', 'flutterwave', 'paystack', 'stripe_public_key', 'razor_key', 'patient_app_id', 'playstore', 'appstore', 'privacy_policy', 'about_us', 'agora_app_id', 'cancel_reason', 'flutterwave_key', 'paystack_public_key', 'currency_symbol', 'currency_code', 'isLiveKey', 'paypal_client_id', 'map_key'])->makeHidden(['companyWhite', 'logo', 'favicon']);
+        $setting = Setting::first(['cod', 'doctor_app_id', 'paypal', 'stripe', 'razor', 'flutterwave', 'paystack', 'stripe_public_key', 'razor_key', 'patient_app_id', 'playstore', 'appstore', 'privacy_policy', 'about_us', 'agora_app_id', 'cancel_reason', 'flutterwave_key', 'paystack_public_key', 'currency_symbol', 'currency_code', 'isLiveKey', 'paypal_client_id'])->makeHidden(['companyWhite', 'logo', 'favicon']);
         if (! auth('api')->check()) {
             $setting = $setting->makeHidden(['stripe_public_key', 'razor_key', 'agora_app_id', 'flutterwave_key', 'paystack_public_key', 'paypal_client_id']);
         }
@@ -1129,7 +1160,9 @@ class UserApiController extends Controller
         if (in_array(strtolower($appointment->appointment_status ?? ''), ['complete', 'completed', 'cancel'])) {
             return response(['success' => false, 'msg' => 'Appointment already closed'], 422);
         }
-        $appointment->update(['appointment_status' => 'complete', 'payment_status' => 1]);
+        // Completing a consultation is NOT evidence that money was received.
+        // PaymentGatewayService alone may confirm a paid transaction.
+        $appointment->update(['appointment_status' => 'complete']);
         $user = User::find($appointment->user_id);
         $doctor = Doctor::find($appointment->doctor_id);
         if ($doctor && $doctor->based_on == 'commission') {
@@ -1138,7 +1171,10 @@ class UserApiController extends Controller
             $settle['doctor_id'] = $appointment->doctor_id;
             $settle['doctor_amount'] = $appointment->doctor_commission;
             $settle['admin_amount'] = $appointment->admin_commission;
-            $settle['payment'] = $appointment->payment_type == 'COD' ? 0 : 1;
+            // Never mark a settlement paid merely because a non-COD gateway
+            // was selected. The underlying payment must already be verified.
+            $settle['payment'] = $appointment->payment_type !== 'COD'
+                && (int) $appointment->payment_status === 1 ? 1 : 0;
             $settle['doctor_status'] = 0;
             Settle::create($settle);
         }
@@ -1306,9 +1342,25 @@ class UserApiController extends Controller
 
     public function apiBanner()
     {
-        $data = Banner::get();
+        // Public curated placements only; never attach patient, booking or
+        // consultation information. Scheduled campaigns expire automatically.
+        $now = now();
+        $data = Banner::where('status', 1)
+            ->where(function ($query) use ($now) {
+                $query->whereNull('starts_at')->orWhere('starts_at', '<=', $now);
+            })
+            ->where(function ($query) use ($now) {
+                $query->whereNull('ends_at')->orWhereDate('ends_at', '>=', $now->toDateString());
+            })
+            ->orderByDesc('id')
+            ->limit(50)
+            ->get()
+            ->filter(fn ($banner) => \App\Services\SafePartnerLink::isValidHttps($banner->link))
+            ->take(30)
+            ->values();
 
-        return response(['success' => true, 'data' => $data]);
+        return response(['success' => true, 'data' => $data])
+            ->header('Cache-Control', 'public, max-age=60');
     }
 
     public function apiFaviroute()
@@ -1476,6 +1528,11 @@ class UserApiController extends Controller
     public function deleteAccount()
     {
         $user = auth()->user();
+        // This endpoint is for Patient accounts only; it must not erase
+        // Doctor, Provider or administrative identities.
+        if (! $user || $user->roles()->exists()) {
+            return response()->json(['success' => false, 'message' => 'Patient access required'], 403);
+        }
         if (Appointment::hasUpcomingForPatient($user->id)) {
             return response()->json(['success' => false, 'message' => 'You have upcoming appointments that need to be canceled first!']);
         }

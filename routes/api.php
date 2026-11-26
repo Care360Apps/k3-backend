@@ -3,6 +3,9 @@
 use App\Http\Controllers\DoctorApiController;
 use App\Http\Controllers\DoctorNoteController;
 use App\Http\Controllers\PaymentApiController;
+use App\Http\Controllers\PatientPlaceSearchController;
+use App\Http\Controllers\Care360AiGuideController;
+use App\Http\Controllers\PatientMedicalFileController;
 use App\Http\Controllers\ProviderApiController;
 use App\Http\Controllers\NearbyCareController;
 use App\Http\Controllers\UserApiController;
@@ -23,6 +26,10 @@ use Illuminate\Support\Facades\Route;
 Route::middleware(['auth:api'])->get('/user', function (Request $request) {
     return $request->user();
 });
+
+// Isolated nonclinical AI navigation (default OFF) and rate-limited.
+Route::post('/ai/guide', [Care360AiGuideController::class, 'guide'])
+    ->middleware(['auth:api', 'throttle:5,1']);
 
 // Onesignal Notification Test, Only for Developers.
 // Route::get('/send-test-notification', [DoctorApiController::class, 'sendTestNotification']);
@@ -79,6 +86,12 @@ Route::middleware('auth:api')->group(function () {
     Route::get('appointment_details/{id}', [DoctorApiController::class, 'apiSingleAppointment']);
     Route::post('complete_appointment', [UserApiController::class, 'apiCompleteAppointment']);
     Route::get('prescription/{appointment_id}', [UserApiController::class, 'apiAppointmentPrescription']);
+    // Authenticated private-storage-only route; legacy public URLs remain
+    // a separate migration/release blocker until every client is updated.
+    Route::get('medical-files/appointments/{appointmentId}/prescription',
+        [PatientMedicalFileController::class, 'downloadPrescription'])
+        ->whereNumber('appointmentId')
+        ->middleware('throttle:30,1');
 
     Route::post('update_profile', [UserApiController::class, 'apiUpdateProfile']);
     Route::post('update_image', [UserApiController::class, 'apiUpdateImage']);
@@ -90,6 +103,9 @@ Route::middleware('auth:api')->group(function () {
     Route::post('cancel_appointment', [UserApiController::class, 'apiCancelAppointment']);
     Route::get('address', [UserApiController::class, 'apiShowAddress']);
     Route::post('add_address', [UserApiController::class, 'apiAddAddress']);
+    // The caller's OAuth/API token stays on Care360; Google key is server-only.
+    Route::post('places/autocomplete', [PatientPlaceSearchController::class, 'autocomplete'])->middleware('throttle:20,1');
+    Route::post('places/details', [PatientPlaceSearchController::class, 'details'])->middleware('throttle:20,1');
     Route::get('delete_address/{id}', [UserApiController::class, 'apiDeleteAddress']);
     Route::post('add_review', [UserApiController::class, 'apiAddReview']);
     Route::post('check_offer', [UserApiController::class, 'apiCheckCoupon']);
@@ -100,7 +116,13 @@ Route::middleware('auth:api')->group(function () {
     Route::get('/video_call_history', [UserApiController::class, 'apiVideoCallHistory']);
     Route::post('/add_call_history', [UserApiController::class, 'apiAddHistory']);
     Route::get('/send_notification', [UserApiController::class, 'apiSendNotification']);
-    Route::get('/delete-account', [UserApiController::class, 'deleteAccount']);
+    // The new Patient client uses a deliberate authenticated POST request.
+    // Existing published clients still call the legacy GET endpoint; retire
+    // GET only after installed-app migration and full account-deletion QA.
+    Route::post('/delete-account', [UserApiController::class, 'deleteAccount'])
+        ->middleware('throttle:3,10');
+    Route::get('/delete-account', [UserApiController::class, 'deleteAccount'])
+        ->middleware('throttle:3,10');
     Route::get('/insurers', [UserApiController::class, 'insurers']);
     Route::get('/logout', [UserApiController::class, 'apiLogout']);
     Route::post('/send_message_to_doctor_notification', [UserApiController::class, 'apiSendMessageToDoctorNotificationTrigger'])->middleware('throttle:10,1');
