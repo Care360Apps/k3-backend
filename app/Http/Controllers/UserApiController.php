@@ -1516,28 +1516,36 @@ class UserApiController extends Controller
     public function oneSignalNoti($userid, $sub, $agoraToken, $channelId, $appId)
     {
         try {
-            $settings = Setting::select('doctor_app_id', 'doctor_api_key', 'doctor_auth_key')->first();
-            Config::set('onesignal.app_id', $settings->doctor_app_id);
-            Config::set('onesignal.rest_api_key', $settings->doctor_api_key);
-            Config::set('onesignal.user_auth_key', $settings->doctor_auth_key);
-            $data = [
-                'name' => $sub,
-                'id' => auth()->user()->id,
-                'channelId' => $channelId,
-                'appId' => $appId,
-                'agoraToken' => $agoraToken,
-            ];
-            // Do not write Agora tokens, channel identifiers or patient data to logs.
-            OneSignal::sendNotificationToUser(
-                $sub,
-                $userid,
-                $url = null,
-                $data = $data,
-                $schedule = null,
-                $headings = null,
-
-            );
-        } catch (\Exception $e) {
+            $settings = Setting::select('doctor_app_id', 'doctor_api_key')->first();
+            $device = trim((string) $userid);
+            if (! $settings || $device === '' || strlen($device) > 512
+                || empty($settings->doctor_app_id) || empty($settings->doctor_api_key)) {
+                throw new \RuntimeException('Notification configuration unavailable');
+            }
+            $response = \Illuminate\Support\Facades\Http::withHeaders([
+                'Authorization' => 'Basic '.$settings->doctor_api_key,
+            ])->acceptJson()->connectTimeout(5)->timeout(10)
+                ->withOptions(['verify' => true, 'allow_redirects' => false])
+                ->post('https://onesignal.com/api/v1/notifications', [
+                    'app_id' => $settings->doctor_app_id,
+                    'contents' => ['en' => $sub],
+                    'include_player_ids' => [$device],
+                    'data' => [
+                        'name' => $sub,
+                        'id' => auth()->user()->id,
+                        'channelId' => $channelId,
+                        'appId' => $appId,
+                        'agoraToken' => $agoraToken,
+                    ],
+                ]);
+            $result = $response->json();
+            if (! $response->successful() || ! is_array($result)
+                || ! is_string($result['id'] ?? null) || trim($result['id']) === ''
+                || ! empty($result['errors'])
+                || (isset($result['recipients']) && (int) $result['recipients'] < 1)) {
+                throw new \RuntimeException('Notification request not accepted');
+            }
+        } catch (\Throwable $e) {
             report(new \RuntimeException('Consultation notification delivery failed'));
         }
     }
