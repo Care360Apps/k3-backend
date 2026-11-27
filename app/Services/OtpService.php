@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\User;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\RateLimiter;
 
 /**
@@ -24,6 +25,17 @@ class OtpService
 
     /** Returns the new plain code, or null when the user is verified already or has asked for too many codes. */
     public function issue(User $user): ?string
+    {
+        return DB::transaction(function () use ($user) {
+            $locked = User::query()->whereKey($user->id)->lockForUpdate()->first();
+            if (! $locked) { return null; }
+            $result = $this->issueLocked($locked);
+            $user->refresh();
+            return $result;
+        });
+    }
+
+    private function issueLocked(User $user): ?string
     {
         if ((int) $user->verify === 1) {
             return null;
@@ -48,6 +60,17 @@ class OtpService
 
     /** Checks the code, consuming it on success and invalidating it after too many wrong guesses. Marks the user verified. */
     public function verify(User $user, ?string $code): bool
+    {
+        return DB::transaction(function () use ($user, $code) {
+            $locked = User::query()->whereKey($user->id)->lockForUpdate()->first();
+            if (! $locked) { return false; }
+            $result = $this->verifyLocked($locked, $code);
+            $user->refresh();
+            return $result;
+        });
+    }
+
+    private function verifyLocked(User $user, ?string $code): bool
     {
         $code = trim((string) $code);
         if ((int) $user->verify === 1 || ! $user->otp || ! preg_match('/^[0-9]{6}$/D', $code)) {
