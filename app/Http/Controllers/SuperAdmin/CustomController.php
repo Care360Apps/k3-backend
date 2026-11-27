@@ -366,17 +366,21 @@ class CustomController extends Controller
 
             if ($isMailNotificationON == 1) {
                 try {
-                    $config = [
-                        'driver' => $setting->mail_mailer,
+                    // Build an isolated SMTP mailer without replacing Laravel's global mail configuration.
+                    $mailer = app(\Illuminate\Mail\MailManager::class)->build([
+                        'transport' => 'smtp',
                         'host' => $setting->mail_host,
-                        'port' => $setting->mail_port,
-                        'from' => ['address' => $setting->mail_from_address, 'name' => $setting->mail_from_name],
+                        'port' => (int) $setting->mail_port,
                         'encryption' => $setting->mail_encryption,
                         'username' => $setting->mail_username,
                         'password' => $setting->mail_password,
-                    ];
-                    Config::set('mail', $config);
-                    Mail::to($user->email)->send(new SendMail($mail1, $subject));
+                        'timeout' => 15,
+                    ]);
+                    $mailer->alwaysFrom($setting->mail_from_address, $setting->mail_from_name);
+                    $mailer->send('send_mail', ['content' => $mail1], function ($message) use ($user, $subject, $setting) {
+                        $message->to($user->email)->subject($subject)
+                            ->from($setting->mail_from_address, $setting->mail_from_name);
+                    });
                 } catch (\Exception $e) {
                     logger()->warning('OTP email transport failed.');
                 }
