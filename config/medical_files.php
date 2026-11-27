@@ -7,4 +7,5 @@ return [
     'private_prescription_writes' => (bool) env('K3_PRIVATE_PRESCRIPTION_WRITES', false),
     // Synthetic staging only. Never use this flag to run on a live patient database.
     'allow_synthetic_migration' => (bool) env('K3_SYNTHETIC_MEDICAL_MIGRATION', false),
+    'private_report_writes' => env('PRIVATE_REPORT_WRITES', false),
 ];
