@@ -12,6 +12,29 @@ final class PrivateAppointmentReportStorage
         return preg_match('/\Ak3report_[a-f0-9]{40}\.png\z/D', $filename) === 1;
     }
 
+    public function discard(string $filename): void
+    {
+        if (! self::isPrivateFilename($filename)) {
+            throw new RuntimeException('Invalid private report name.');
+        }
+        $root = realpath(storage_path('app'));
+        $public = realpath(public_path());
+        $folder = storage_path('app/private/medical/appointment-reports');
+        $base = realpath($folder);
+        $path = $folder.DIRECTORY_SEPARATOR.$filename;
+        $full = realpath($path);
+        if ($root === false || $public === false || $base === false || $full === false
+            || ! str_starts_with($base, $root.DIRECTORY_SEPARATOR)
+            || $base === $public || str_starts_with($base, $public.DIRECTORY_SEPARATOR)
+            || ! str_starts_with($full, $base.DIRECTORY_SEPARATOR)
+            || is_link($path) || ! is_file($full)) {
+            throw new RuntimeException('Unsafe report cleanup path.');
+        }
+        if (! unlink($full)) {
+            throw new RuntimeException('Report cleanup failed.');
+        }
+    }
+
     public function store(string $bytes): string
     {
         if (strlen($bytes) > 5 * 1024 * 1024 || ! str_starts_with($bytes, "\x89PNG\r\n\x1a\n")) {
