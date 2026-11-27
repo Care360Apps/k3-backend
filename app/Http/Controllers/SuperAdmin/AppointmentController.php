@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Controllers\superAdmin;
+namespace App\Http\Controllers\SuperAdmin;
 
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\SuperAdmin\CustomController;
@@ -406,7 +406,7 @@ class AppointmentController extends Controller
             $report = [];
             for ($i = 0; $i < count($data['report_image']); $i++) {
                 // return $request->report_image[$i];
-                array_push($report, (new CustomController)->imageUpload($request->report_image[$i]));
+                array_push($report, (new \App\Services\PrivateAppointmentReportStorage)->storeUpload($request->report_image[$i]));
             }
             $data['report_image'] = json_encode($report);
         }
@@ -492,9 +492,9 @@ class AppointmentController extends Controller
             if ($data['type'.$i] === 'new') {
                 if ($i == $data['change_iteration'.$i] && $data['change_iteration'.$i] != null) {
                     if (isset($appointment->report_image[$i])) {
-                        (new CustomController)->deleteFile($report_img[$i]);
+                        // Retain the previous report for controlled orphan reconciliation after commit.
                     }
-                    array_push($report, (new CustomController)->imageUpload($request->file('report_image')[$i]));
+                    array_push($report, (new \App\Services\PrivateAppointmentReportStorage)->storeUpload($request->file('report_image')[$i]));
                 }
             }
             if ($data['type'.$i] === 'old') {
