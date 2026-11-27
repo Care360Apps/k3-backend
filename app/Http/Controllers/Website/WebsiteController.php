@@ -813,7 +813,7 @@ class WebsiteController extends Controller
             $report = [];
             $reportImages = $request->file('report_image');
             foreach ($reportImages as $image) {
-                array_push($report, (new CustomController)->imageUpload($image));
+                array_push($report, (new \App\Services\PrivateAppointmentReportStorage)->storeUpload($image));
             }
             $data['report_image'] = json_encode($report);
         }

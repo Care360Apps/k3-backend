@@ -643,7 +643,7 @@ class UserApiController extends Controller
                         'report_image' => 'A PNG report image must be no larger than 6 MB.',
                     ]);
                 }
-                if (config('medical_files.private_report_writes', false) === true) {
+                if (app(\App\Services\MedicalReportReleaseGate::class)->privateWritesEnabled()) {
                     $Iname = (new \App\Services\PrivateAppointmentReportStorage)->store($bytes);
                 } else {
                     $Iname = CustomController::randomFileName('png');

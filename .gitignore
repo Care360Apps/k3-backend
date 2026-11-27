@@ -29,3 +29,5 @@
 # K3 private service accounts (never commit)
 /storage/app/firebase-service-account.json
 **/*service-account*.json
+
+.phpunit.result.cache

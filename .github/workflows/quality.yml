@@ -145,13 +145,37 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.3'
-          extensions: mbstring, pdo_sqlite, xml, curl, openssl, fileinfo, zip
+          extensions: mbstring, pdo_sqlite, xml, curl, openssl, fileinfo, zip, gd
           tools: composer:v2
       - name: Install locked dependencies offline from the service's code
         run: composer install --no-interaction --prefer-dist --no-progress
+      - name: Synthetic environment file for legacy boot configuration
+        run: cp .env.example .env
       - name: Ephemeral test-only Laravel key
         run: echo "APP_KEY=base64:$(php -r 'echo base64_encode(random_bytes(32));')" >> "$GITHUB_ENV"
       - name: Ephemeral Passport keys for the synthetic API guard
         run: php artisan passport:keys --no-interaction
+      - name: Medical report migration, recovery and authorization acceptance
+        run: php artisan test --filter='(MedicalReportReleaseTest|MedicalReportStageTest|AppointmentReportMetadataTest)' --stop-on-failure
+      - name: Wallet financial regressions (synthetic only)
+        run: php artisan test --filter='(WalletLedgerTest|WalletFundingGuardTest|WalletCheckoutGuardTest)' --stop-on-failure
       - name: Test clinical workflows, facility-directory publication and CSV import safety
         run: php artisan test --filter='(TrainsCatalogueTest|PaystackCheckoutTest|CareerTrainingWorkflowTest|PrivatePrescriptionAccessTest|PrivatePrescriptionWriteTest|LegacyPrescriptionStagingTest|ApprovedProfessionalAccessTest|AtomicPaymentReceiptClaimTest|WorkforcePilotTest|DoctorWorkspaceTest|ClinicalWorkflowTest|MedicineBulkWorkflowTest|LabWorkflowTest|PatientDiscoveryPublicationTest|FacilityDirectoryApiTest|FacilityDirectoryCsvImportTest)' --stop-on-failure
+
+  production-php82-compatibility:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, pdo_mysql, xml, curl, openssl, fileinfo, zip, gd
+          tools: composer:v2
+      - name: Check locked production dependencies on cPanel PHP version
+        run: |
+          composer install --no-dev --no-scripts --no-interaction --prefer-dist --no-progress
+          composer check-platform-reqs --no-dev
+      - name: PHP 8.2 report release syntax compatibility
+        run: |
+          find app config routes database tools -type f -name '*.php' -print0 | while IFS= read -r -d '' file; do php -l "$file" >/dev/null || exit 1; done

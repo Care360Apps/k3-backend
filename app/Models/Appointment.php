@@ -83,7 +83,7 @@ class Appointment extends Model
                     continue;
                 }
                 if (\App\Services\PrivateAppointmentReportStorage::isPrivateFilename($filename)) {
-                    $images[] = url('api/medical-files/appointments/'.$this->getKey().'/reports/'.$filename);
+                    $images[] = secure_url('api/medical-files/appointments/'.$this->getKey().'/reports/'.$filename);
                 } else {
                     $images[] = url('images/upload').'/'.$filename;
                 }

@@ -27,6 +27,7 @@ class Kernel extends ConsoleKernel
         // If no cron is configured, server filtering still stops public
         // discovery immediately at expiry, but coordinate retention cleanup
         // will not run until the scheduler is enabled.
+        $schedule->command('medical:report-release reconcile')->daily()->withoutOverlapping();
         $schedule->command('nearby:purge-expired-presence')
             ->everyFiveMinutes()
             ->withoutOverlapping();
