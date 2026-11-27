@@ -141,6 +141,10 @@ Route::middleware('auth:api')->group(function () {
         [PatientMedicalFileController::class, 'downloadPrescription'])
         ->whereNumber('appointmentId')
         ->middleware('throttle:30,1');
+    Route::get('medical-files/appointments/{appointmentId}/reports/{name}',
+        [\App\Http\Controllers\AppointmentReportFileController::class, 'downloadReport'])
+        ->whereNumber('appointmentId')
+        ->middleware('throttle:30,1');
 
     Route::post('update_profile', [UserApiController::class, 'apiUpdateProfile']);
     Route::post('update_image', [UserApiController::class, 'apiUpdateImage']);

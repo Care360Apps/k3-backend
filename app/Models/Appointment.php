@@ -82,7 +82,11 @@ class Appointment extends Model
                     || preg_match('~[^a-zA-Z0-9_.-]~', $filename)) {
                     continue;
                 }
-                $images[] = url('images/upload').'/'.$filename;
+                if (\App\Services\PrivateAppointmentReportStorage::isPrivateFilename($filename)) {
+                    $images[] = url('api/medical-files/appointments/'.$this->getKey().'/reports/'.$filename);
+                } else {
+                    $images[] = url('images/upload').'/'.$filename;
+                }
             }
 
             return $images;

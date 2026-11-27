@@ -78,4 +78,5 @@ class PatientMedicalFileController extends Controller
             'X-Robots-Tag' => 'noindex, nofollow',
         ]);
     }
+
 }

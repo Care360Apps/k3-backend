@@ -643,8 +643,12 @@ class UserApiController extends Controller
                         'report_image' => 'A PNG report image must be no larger than 6 MB.',
                     ]);
                 }
-                $Iname = CustomController::randomFileName('png');
-                file_put_contents(public_path('/images/upload/').$Iname, $bytes, LOCK_EX);
+                if (config('medical_files.private_report_writes', false) === true) {
+                    $Iname = (new \App\Services\PrivateAppointmentReportStorage)->store($bytes);
+                } else {
+                    $Iname = CustomController::randomFileName('png');
+                    file_put_contents(public_path('/images/upload/').$Iname, $bytes, LOCK_EX);
+                }
                 array_push($report, $Iname);
             }
             $data['report_image'] = json_encode($report);
