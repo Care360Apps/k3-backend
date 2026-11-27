@@ -34,8 +34,9 @@ class MigrateLegacyAppointmentReports extends Command
         $failed = 0;
         Appointment::query()->select('id')->chunkById(100, function ($rows) use ($root, $storage, &$migrated, &$failed) {
             foreach ($rows as $row) {
+                $createdFiles = [];
                 try {
-                    $changed = DB::transaction(function () use ($row, $root, $storage) {
+                    $changed = DB::transaction(function () use ($row, $root, $storage, &$createdFiles) {
                         $appointment = Appointment::query()->lockForUpdate()->findOrFail($row->id);
                         $raw = $appointment->getRawOriginal('report_image');
                         if ($raw === null || $raw === '') {
@@ -65,6 +66,7 @@ class MigrateLegacyAppointmentReports extends Command
                                 throw new RuntimeException('Unreadable report');
                             }
                             $private = $storage->store($bytes);
+                            $createdFiles[] = $private;
                             $target = storage_path('app/private/medical/appointment-reports/'.$private);
                             if (hash_file('sha256', $target) !== hash('sha256', $bytes)) {
                                 throw new RuntimeException('Copy verification failed');
@@ -82,6 +84,17 @@ class MigrateLegacyAppointmentReports extends Command
                 } catch (\Throwable $error) {
                     // Do not log patient identifiers, paths or report content.
                     $failed++;
+                    foreach ($createdFiles as $private) {
+                        try {
+                            // A commit may have succeeded despite a connection error.
+                            // Retain the file unless the current database proves it is unreferenced.
+                            if (! Appointment::query()->where('report_image', 'like', '%'.$private.'%')->exists()) {
+                                $storage->discard($private);
+                            }
+                        } catch (\Throwable $cleanupError) {
+                            // Preserve files if database or storage state is uncertain.
+                        }
+                    }
                 }
             }
         });
