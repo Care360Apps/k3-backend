@@ -49,11 +49,11 @@ class OtpService
     /** Checks the code, consuming it on success and invalidating it after too many wrong guesses. Marks the user verified. */
     public function verify(User $user, ?string $code): bool
     {
-        $code = preg_replace('/\D/', '', (string) $code);
-        if ((int) $user->verify === 1 || ! $user->otp || strlen($code) !== self::LENGTH) {
+        $code = trim((string) $code);
+        if ((int) $user->verify === 1 || ! $user->otp || ! preg_match('/^[0-9]{6}$/D', $code)) {
             return false;
         }
-        if (! $user->otp_expires_at || now()->greaterThan($user->otp_expires_at) || $user->otp_attempts >= self::MAX_ATTEMPTS) {
+        if (! $user->otp_expires_at || ! $user->otp_expires_at->greaterThan(now()) || $user->otp_attempts >= self::MAX_ATTEMPTS) {
             $this->clear($user);
 
             return false;
@@ -63,8 +63,9 @@ class OtpService
 
             return false;
         }
-        $this->clear($user);
-        $user->forceFill(['verify' => 1])->save();
+        $user->forceFill([
+            'verify' => 1, 'otp' => null, 'otp_expires_at' => null, 'otp_attempts' => 0,
+        ])->save();
 
         return true;
     }
