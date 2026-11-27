@@ -85,7 +85,20 @@ final class MedicalReportStage
         if (! $handle || ! chmod($log, 0600)) {
             throw new RuntimeException('Private log unavailable.');
         }fclose($handle);
-        $process = proc_open($command, [0 => ['pipe', 'r'], 1 => ['file', $log, 'ab'], 2 => ['file', $log, 'ab']], $pipes, $cwd);
+        // Laravel's dotenv loader does not replace exported variables. Never let
+        // a production DB/APP variable inherited from the shell override staging.
+        $environment = [];
+        foreach (getenv() as $key => $value) {
+            if (in_array(strtoupper($key), ['PATH', 'HOME', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'SYSTEMROOT', 'WINDIR', 'TEMP', 'TMP', 'TMPDIR', 'OPENSSL_CONF', 'COMPOSER_CACHE_DIR'], true)) {
+                $environment[$key] = $value;
+            }
+        }
+        $environment = array_merge($environment, self::env($cwd.'/.env'), [
+            'APP_ENV' => 'staging', 'APP_DEBUG' => 'false',
+            'MEDICAL_REPORT_PRODUCTION_ENABLED' => 'false',
+            'MEDICAL_REPORT_AUTO_QUARANTINE' => 'false',
+        ]);
+        $process = proc_open($command, [0 => ['pipe', 'r'], 1 => ['file', $log, 'ab'], 2 => ['file', $log, 'ab']], $pipes, $cwd, $environment);
         if (! is_resource($process)) {
             throw new RuntimeException('Staging command unavailable.');
         }
@@ -225,10 +238,10 @@ if (realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === __FILE__) {
             MedicalReportStage::validate($args['target'], $args['env-file'], $args['live-root']);
             echo "Staging isolation configuration verified. No deployment performed.\n";
         } else {
-            MedicalReportStage::install(dirname(__DIR__),$args['target'],$args['env-file'],$args['live-root']);
+            MedicalReportStage::install(dirname(__DIR__), $args['target'], $args['env-file'], $args['live-root']);
         }
     } catch (Throwable $e) {
-        fwrite(STDERR,get_class($e) === RuntimeException::class ? $e->getMessage()."\n" : "Staging failed closed; inspect privately.\n");
+        fwrite(STDERR, get_class($e) === RuntimeException::class ? $e->getMessage()."\n" : "Staging failed closed; inspect privately.\n");
         exit(1);
     }
 }

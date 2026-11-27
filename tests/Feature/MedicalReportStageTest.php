@@ -104,4 +104,29 @@ class MedicalReportStageTest extends TestCase
         $restored->exec(file_get_contents($file));
         $this->assertSame($pdo->query('SELECT * FROM fixture')->fetch(\PDO::FETCH_ASSOC), $restored->query('SELECT * FROM fixture')->fetch(\PDO::FETCH_ASSOC));
     }
+
+    public function test_exported_production_environment_cannot_override_staging_commands(): void
+    {
+        $cwd = $this->root.DIRECTORY_SEPARATOR.'command-stage';
+        File::makeDirectory($cwd.DIRECTORY_SEPARATOR.'storage/app/private/release-backups', 0700, true);
+        copy($this->root.DIRECTORY_SEPARATOR.'stage.env', $cwd.DIRECTORY_SEPARATOR.'.env');
+        chmod($cwd.DIRECTORY_SEPARATOR.'.env', 0600);
+        $before = [];
+        foreach (['APP_ENV', 'DB_DATABASE', 'MEDICAL_REPORT_PRODUCTION_ENABLED'] as $key) {
+            $before[$key] = getenv($key);
+        }
+        putenv('APP_ENV=production');
+        putenv('DB_DATABASE=must_never_use_this_live_database');
+        putenv('MEDICAL_REPORT_PRODUCTION_ENABLED=true');
+        try {
+            $run = new \ReflectionMethod(\MedicalReportStage::class, 'run');
+            $run->invoke(null, [PHP_BINARY, '-r', 'echo getenv("APP_ENV")."|".getenv("DB_DATABASE")."|".getenv("MEDICAL_REPORT_PRODUCTION_ENABLED");'], $cwd);
+            $log = file_get_contents($cwd.'/storage/app/private/release-backups/commands.log');
+            $this->assertSame('staging|synthetic_stage|false', $log);
+        } finally {
+            foreach ($before as $key => $value) {
+                putenv($value === false ? $key : $key.'='.$value);
+            }
+        }
+    }
 }
