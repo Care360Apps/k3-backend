@@ -71,6 +71,13 @@ class MigrateLegacyAppointmentReports extends Command
                             if (hash_file('sha256', $target) !== hash('sha256', $bytes)) {
                                 throw new RuntimeException('Copy verification failed');
                             }
+                            DB::table('appointment_report_migration_ledger')->insert([
+                                'appointment_id' => $appointment->id,
+                                'legacy_filename' => $name,
+                                'private_filename' => $private,
+                                'sha256' => hash('sha256', $bytes),
+                                'created_at' => now(),
+                            ]);
                             $updated[] = $private;
                         }
                         if ($updated === $names) {
@@ -88,7 +95,7 @@ class MigrateLegacyAppointmentReports extends Command
                         try {
                             // A commit may have succeeded despite a connection error.
                             // Retain the file unless the current database proves it is unreferenced.
-                            if (! Appointment::query()->where('report_image', 'like', '%'.$private.'%')->exists()) {
+                            if (! Appointment::withoutGlobalScopes()->where('report_image', 'like', '%'.$private.'%')->exists()) {
                                 $storage->discard($private);
                             }
                         } catch (\Throwable $cleanupError) {
