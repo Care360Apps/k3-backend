@@ -72,10 +72,17 @@ class Appointment extends Model
     {
         if (isset($this->attributes['report_image']) && $this->attributes['report_image'] != null) {
             $images = [];
-            $image = json_decode($this->attributes['report_image']);
+            $image = json_decode($this->attributes['report_image'], true);
+            if (! is_array($image)) {
+                return [];
+            }
 
-            for ($i = 0; $i < count($image); $i++) {
-                array_push($images, url('images/upload').'/'.$image[$i]);
+            foreach ($image as $filename) {
+                if (! is_string($filename) || $filename === '' || $filename === '.' || $filename === '..'
+                    || preg_match('~[^a-zA-Z0-9_.-]~', $filename)) {
+                    continue;
+                }
+                $images[] = url('images/upload').'/'.$filename;
             }
 
             return $images;
