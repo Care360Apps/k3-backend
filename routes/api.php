@@ -142,7 +142,7 @@ Route::middleware('auth:api')->group(function () {
         ->whereNumber('appointmentId')
         ->middleware('throttle:30,1');
     Route::get('medical-files/appointments/{appointmentId}/reports/{name}',
-        [PatientMedicalFileController::class, 'downloadReport'])
+        [\App\Http\Controllers\AppointmentReportFileController::class, 'downloadReport'])
         ->whereNumber('appointmentId')
         ->middleware('throttle:30,1');
 
