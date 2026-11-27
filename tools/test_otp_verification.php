@@ -15,6 +15,13 @@ namespace {
 namespace App\Models {
     final class User
     {
+        public static ?self $current = null;
+        public function __construct() { self::$current = $this; }
+        public static function query(): self { return self::$current; }
+        public function whereKey($id): self { return $this; }
+        public function lockForUpdate(): self { return $this; }
+        public function first(): self { return $this; }
+        public function refresh(): self { return $this; }
         public int $id = 1;
         public int $verify = 0;
         public ?string $otp = null;
@@ -27,6 +34,10 @@ namespace App\Models {
 }
 
 namespace Illuminate\Support\Facades {
+    final class DB
+    {
+        public static function transaction(callable $callback): mixed { return $callback(); }
+    }
     final class Hash
     {
         public static function make(string $value): string { return password_hash($value, PASSWORD_BCRYPT); }
