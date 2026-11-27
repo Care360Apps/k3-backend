@@ -132,5 +132,15 @@ namespace {
         foreach ([null, '', '12345', '1234567'] as $code) { check(! $service->verify($user, $code), 'Malformed code accepted'); }
         check($user->verify === 0, 'Malformed input verified user');
     });
+    runCase('malformed code with embedded characters is rejected', function ($service, $user) {
+        $code = $service->issue($user);
+        check(! $service->verify($user, substr($code, 0, 3).'-'.substr($code, 3)), 'Malformed code accepted');
+        check($service->verify($user, $code), 'Valid code rejected');
+    });
+    runCase('code expires at the exact deadline', function ($service, $user) {
+        $code = $service->issue($user);
+        $GLOBALS['otp_time'] += 600;
+        check(! $service->verify($user, $code), 'Code accepted at expiry');
+    });
     echo "$cases OTP regression cases passed.\n";
 }
