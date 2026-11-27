@@ -170,7 +170,7 @@ final class MedicalReportLifecycle
                                 continue;
                             }
                             $source = $this->checked($root, $name);
-                            $bytes = file_get_contents($source, false, null, 0, 5 * 1024 * 1024 + 1);
+                            $bytes = file_get_contents($source, false, null, 0, 6 * 1024 * 1024 + 1);
                             if ($bytes === false) {
                                 throw new RuntimeException('Unreadable source.');
                             }
@@ -414,11 +414,11 @@ final class MedicalReportLifecycle
                     if (! PrivateAppointmentReportStorage::isPrivateFilename($op->filename)) {
                         throw new RuntimeException('Invalid orphan evidence.');
                     }
-                    $this->copy($source,$private.DIRECTORY_SEPARATOR.$op->filename,$op->sha256);
-                    DB::table('medical_report_file_operations')->where('id',$op->id)->update(['state' => 'recovered', 'updated_at' => now()]);
+                    $this->copy($source, $private.DIRECTORY_SEPARATOR.$op->filename, $op->sha256);
+                    DB::table('medical_report_file_operations')->where('id', $op->id)->update(['state' => 'recovered', 'updated_at' => now()]);
                     $count++;
                 }
-                $this->event('private_recovery',$op->id);
+                $this->event('private_recovery', $op->id);
             }
 
             // Intentionally never recreates a public medical URL or silently overwrites metadata.

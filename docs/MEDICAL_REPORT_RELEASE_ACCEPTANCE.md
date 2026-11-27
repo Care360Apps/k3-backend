@@ -4,7 +4,7 @@ Production activation: DISABLED. Merging or deploying source is not activation a
 
 ## Implemented boundaries
 
-The existing appointment PNG report storage and authenticated Patient/Plus routes are reused. Migration preserves PNG bytes, creates random private names and writes SHA-256 evidence in the same transaction as appointment references. Unsupported metadata, missing/changed files and shared public upload references block progress. Lab results and prescription PDFs keep their separate existing protected workflows; this tool does not convert arbitrary clinical documents.
+The existing appointment PNG report storage and authenticated Patient/Plus routes are reused. Migration preserves PNG bytes and the existing 6 MB API upload limit, creates random private names and writes SHA-256 evidence in the same transaction as appointment references. Unsupported metadata, missing/changed files and shared public upload references block progress. Lab results and prescription PDFs keep their separate existing protected workflows; this tool does not convert arbitrary clinical documents.
 
 One storage lock is shared by report migration, private uploads and reconciliation. Web, admin and API report upload paths use the private writer when activated. Production private writes require a matching, expiring operator approval, not only an environment switch. Source files are never removed before a hash-verified recovery copy exists. Restarting revocation verifies evidence instead of overwriting it. Recovery recreates missing PRIVATE copies and never automatically restores a public clinical URL or overwrites a conflicting copy.
 

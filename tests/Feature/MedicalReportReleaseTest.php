@@ -333,7 +333,7 @@ class MedicalReportReleaseTest extends TestCase
                 fclose($pipe);
             }
 
-return proc_close($proc);
+            return proc_close($proc);
         };
         $this->assertSame(23, \App\Services\ReportStorageLock::run($run));
         $this->assertSame(0, $run());
@@ -346,13 +346,24 @@ return proc_close($proc);
         touch($file, time() - 20 * 86400);
         $this->lifecycle()->reconcile();
         DB::table('medical_report_file_operations')->update(['created_at' => now()->subDays(8)]);
-        file_put_contents($file,'changed');
-        touch($file,time() - 20 * 86400);
+        file_put_contents($file, 'changed');
+        touch($file, time() - 20 * 86400);
         try {
             $this->lifecycle()->reconcile(true);
             $this->fail('Changed orphan moved');
         } catch (\RuntimeException $e) {
             $this->assertFileExists($file);
         }
+    }
+
+    public function test_legacy_six_megabyte_limit_is_preserved_without_truncating_report_bytes(): void
+    {
+        $name = $this->fixture();
+        $bytes = $this->png().str_repeat("\0", 6 * 1024 * 1024 - strlen($this->png()));
+        file_put_contents(public_path('images/upload/'.$name), $bytes);
+        $this->assertSame(1, $this->lifecycle()->migrate());
+        $row = DB::table('appointment_report_migration_ledger')->first();
+        $this->assertSame(hash('sha256', $bytes), hash_file('sha256', storage_path('app/private/medical/appointment-reports/'.$row->private_filename)));
+        $this->assertSame(1, $this->lifecycle()->verify());
     }
 }

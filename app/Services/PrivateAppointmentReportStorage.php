@@ -42,17 +42,20 @@ final class PrivateAppointmentReportStorage
 
     public function storeUpload(\Illuminate\Http\UploadedFile $file): string
     {
-        if (!app(MedicalReportReleaseGate::class)->privateWritesEnabled()) {
+        if (! app(MedicalReportReleaseGate::class)->privateWritesEnabled()) {
             return (new \App\Http\Controllers\SuperAdmin\CustomController)->imageUpload($file);
         }
-        if (!$file->isValid() || $file->getSize() > 5*1024*1024) throw ValidationException::withMessages(['report_image'=>'A PNG report of 5 MB or less is required.']);
+        if (! $file->isValid() || $file->getSize() > 6 * 1024 * 1024) {
+            throw ValidationException::withMessages(['report_image' => 'A PNG report of 6 MB or less is required.']);
+        }
+
         return $this->store(file_get_contents($file->getRealPath()));
     }
 
     private function storeLocked(string $bytes): string
     {
-        if (strlen($bytes) > 5 * 1024 * 1024 || ! str_starts_with($bytes, "\x89PNG\r\n\x1a\n")) {
-            throw ValidationException::withMessages(['report_image' => 'A valid PNG of 5 MB or less is required.']);
+        if (strlen($bytes) > 6 * 1024 * 1024 || ! str_starts_with($bytes, "\x89PNG\r\n\x1a\n")) {
+            throw ValidationException::withMessages(['report_image' => 'A valid PNG of 6 MB or less is required.']);
         }
         $image = @getimagesizefromstring($bytes);
         if (! $image || $image[2] !== IMAGETYPE_PNG || $image[0] > 10000 || $image[1] > 10000 || $image[0] * $image[1] > 16000000) {
