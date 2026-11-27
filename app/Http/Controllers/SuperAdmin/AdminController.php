@@ -72,7 +72,9 @@ class AdminController extends Controller
 
     private function authorizeSuperAdmin(): void
     {
-        abort_unless(auth()->user()?->hasRole('super admin'), Response::HTTP_FORBIDDEN, '403 Forbidden');
+        $user = auth()->user();
+        abort_unless($user && (int) $user->status === 1
+            && $user->hasRole('super admin'), Response::HTTP_FORBIDDEN, '403 Forbidden');
     }
 
     public function verify_admin(Request $request)
