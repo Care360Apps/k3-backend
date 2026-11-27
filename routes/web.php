@@ -91,14 +91,14 @@ Route::middleware(['auth'])->group(function () {
     Route::get('workforce/review', [\App\Http\Controllers\WorkforceReviewController::class, 'index'])->name('workforce.review');
     Route::post('workforce/review', [\App\Http\Controllers\WorkforceReviewController::class, 'store'])->middleware('throttle:30,1');
     Route::get('/spatie-cache-clear', function () {
-        abort_unless(auth()->user()->hasRole('super admin'), 403);
+        abort_unless((int) auth()->user()->status === 1 && auth()->user()->hasRole('super admin'), 403);
         Artisan::call('cache:forget spatie.permission.cache');
 
         return 'Cache cleared';
     });
 
     Route::get('/clear-cache', function () {
-        abort_unless(auth()->user()->hasRole('super admin'), 403);
+        abort_unless((int) auth()->user()->status === 1 && auth()->user()->hasRole('super admin'), 403);
         Artisan::call('cache:clear');
         Artisan::call('route:clear');
         Artisan::call('view:clear');
